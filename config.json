@@ -1,0 +1,76 @@
+{
+  "llm": {
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "max_tokens": 1000,
+    "temperature": 0.3,
+    "providers": {
+      "anthropic": {
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "available_models": [
+          "claude-opus-4-20250514",
+          "claude-sonnet-4-20250514",
+          "claude-3-7-sonnet-20250219",
+          "claude-3-5-sonnet-20241022",
+          "claude-3-5-haiku-20241022"
+        ],
+        "default_model": "claude-sonnet-4-20250514"
+      },
+      "google": {
+        "project_id_env": "GOOGLE_PROJECT_ID",
+        "location": "us-central1",
+        "credentials_env": "GOOGLE_APPLICATION_CREDENTIALS",
+        "available_models": [
+          "gemini-2.5-pro",
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-2.0-flash",
+          "gemini-2.0-flash-lite"
+        ],
+        "default_model": "gemini-2.5-flash"
+      },
+      "openai": {
+        "api_key_env": "OPENAI_API_KEY",
+        "available_models": [
+          "gpt-4.1",
+          "gpt-4.1-mini",
+          "gpt-4.1-nano",
+          "o3",
+          "o4-mini",
+          "gpt-4o",
+          "gpt-4o-mini"
+        ],
+        "default_model": "gpt-4.1"
+      },
+      "xai": {
+        "api_endpoint": "https://api.x.ai/v1/chat/completions",
+        "api_key_env": "XAI_API_KEY",
+        "available_models": [
+          "grok-4-0709",
+          "grok-3",
+          "grok-3-mini",
+          "grok-beta",
+          "grok-vision-beta"
+        ],
+        "default_model": "grok-4-0709"
+      }
+    }
+  },
+  "pdf": {
+    "max_pages_before_extraction": 3,
+    "extraction_pages": 3
+  },
+  "google_drive": {
+    "credentials_file": "credentials.json",
+    "token_file": "token.json",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive"
+    ]
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(levelname)s - %(message)s",
+    "date_format": "%Y-%m-%dT%H:%M:%S.%f%z",
+    "file": "scan_namer.log"
+  }
+}

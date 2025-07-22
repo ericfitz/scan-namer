@@ -1,0 +1,14 @@
+#!/bin/bash
+"""
+Scan Namer wrapper script - uses uv to run the Python script with dependencies
+"""
+
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    echo "Error: uv is not installed. Please install it first:"
+    echo "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    exit 1
+fi
+
+# Run the Python script with uv
+exec uv run scan_namer.py "$@"

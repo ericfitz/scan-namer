@@ -1,0 +1,7 @@
+{
+  "document_naming": {
+    "system_prompt": "You are a document naming assistant. Your job is to analyze document content and suggest descriptive, professional filenames.",
+    "user_prompt": "Please analyze the attached document and suggest a concise, descriptive filename (without extension) that captures the main purpose or content of the document. The filename should be:\n- Professional and clear\n- 2-6 words maximum\n- Use underscores instead of spaces\n- Avoid special characters except underscores and hyphens\n- Include relevant dates if mentioned in the document (format: YYYY-MM-DD)\n- Include document type if clear (invoice, receipt, contract, etc.)\n\nExamples:\n- 'Invoice_ABC_Company_2024-01-15'\n- 'Bank_Statement_January_2024'\n- 'Medical_Report_Dr_Smith'\n- 'Insurance_Policy_Auto'\n\nRespond with only the suggested filename, nothing else.",
+    "fallback_prompt": "Generate a descriptive filename for this document based on its content. Respond with only the filename (no extension), using underscores instead of spaces."
+  }
+}
