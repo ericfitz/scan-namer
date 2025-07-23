@@ -148,6 +148,7 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 ### Core Options
 - `--dry-run`: Test mode - analyzes one file but doesn't rename
 - `--no-ocr`: Skip text extraction, upload PDFs directly (requires PDF-capable model)
+- `--tokens N`: Override max_tokens limit (e.g., `--tokens 3000` for longer responses)
 - `--verbose`: Enable debug logging
 - `--config FILE`: Use custom config file
 
@@ -193,6 +194,7 @@ All options are passed through to the Python script via the bash wrapper.
 ./scan-namer                                  # Smart auto mode (recommended)
 ./scan-namer --provider anthropic             # Use Claude with auto fallback
 ./scan-namer --no-ocr --provider google       # PDF-first with Gemini
+./scan-namer --tokens 4000 --provider anthropic  # More detailed analysis
 ```
 
 ## Troubleshooting

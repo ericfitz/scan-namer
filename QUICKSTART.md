@@ -58,6 +58,7 @@ If the dry run works, remove `--dry-run` to start renaming files:
 ## Key Options
 - `--dry-run`: Test mode - analyze without renaming
 - `--no-ocr`: Skip text extraction, upload PDFs directly (requires vision model)
+- `--tokens N`: Override max tokens per request (e.g., `--tokens 3000`)
 - `--verbose`: See detailed debug output
 - `--provider PROVIDER`: Choose LLM provider (xai, anthropic, openai, google)
 - `--model MODEL_NAME`: Use specific LLM model
@@ -86,6 +87,9 @@ For image-based PDFs or when text extraction fails:
 
 # PDF upload with OpenAI GPT-4o
 ./scan-namer --no-ocr --provider openai --model gpt-4o
+
+# Use more tokens for detailed analysis
+./scan-namer --tokens 4000 --provider anthropic --model claude-sonnet-4-20250514
 ```
 
 **⚠️ Note**: PDF upload requires vision-enabled models. The system will warn you if you try to use `--no-ocr` with a text-only model.

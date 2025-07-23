@@ -395,11 +395,16 @@ class PDFProcessor:
 class BaseLLMClient:
     """Base class for LLM clients."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str):
+    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
         self.config = config
         self.provider = provider
         self.model = model
-        self.max_tokens = config.get("llm.max_tokens", 1000)
+        # Use command line override if provided, otherwise fall back to config
+        if max_tokens is not None:
+            self.max_tokens = max_tokens
+            logging.info(f"Using command line override: max_tokens = {max_tokens}")
+        else:
+            self.max_tokens = config.get("llm.max_tokens", 1000)
         self.temperature = config.get("llm.temperature", 0.3)
         self.token_costs = []
 
@@ -546,8 +551,8 @@ class XAIClient(BaseLLMClient):
 class AnthropicClient(BaseLLMClient):
     """Anthropic Claude API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str):
-        super().__init__(config, provider, model)
+    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+        super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self._setup_client()
 
@@ -638,8 +643,8 @@ class AnthropicClient(BaseLLMClient):
 class OpenAIClient(BaseLLMClient):
     """OpenAI GPT API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str):
-        super().__init__(config, provider, model)
+    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+        super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self._setup_client()
 
@@ -736,8 +741,8 @@ class OpenAIClient(BaseLLMClient):
 class GoogleClient(BaseLLMClient):
     """Google Vertex AI API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str):
-        super().__init__(config, provider, model)
+    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+        super().__init__(config, provider, model, max_tokens)
         self.project_id = self._get_project_id()
         self.location = config.get(f"llm.providers.{provider}.location", "us-central1")
         self._setup_client()
@@ -840,7 +845,7 @@ class LLMClientFactory:
 
     @staticmethod
     def create_client(
-        config: ConfigManager, provider: str = None, model: str = None
+        config: ConfigManager, provider: str = None, model: str = None, max_tokens: int = None
     ) -> BaseLLMClient:
         """Create appropriate LLM client based on provider."""
         if provider is None:
@@ -872,13 +877,13 @@ class LLMClientFactory:
 
         # Create appropriate client
         if provider == "xai":
-            return XAIClient(config, provider, model)
+            return XAIClient(config, provider, model, max_tokens)
         elif provider == "anthropic":
-            return AnthropicClient(config, provider, model)
+            return AnthropicClient(config, provider, model, max_tokens)
         elif provider == "openai":
-            return OpenAIClient(config, provider, model)
+            return OpenAIClient(config, provider, model, max_tokens)
         elif provider == "google":
-            return GoogleClient(config, provider, model)
+            return GoogleClient(config, provider, model, max_tokens)
         else:
             logging.error(f"No client implementation for provider: {provider}")
             sys.exit(1)
@@ -894,6 +899,7 @@ class ScanNamer:
         model: str = None,
         provider: str = None,
         no_ocr: bool = False,
+        max_tokens: int = None,
     ):
         self.config = ConfigManager(config_file)
         self.prompts = PromptManager()
@@ -905,7 +911,7 @@ class ScanNamer:
         self.drive_manager = GoogleDriveManager(self.config)
         self.pdf_processor = PDFProcessor(self.config)
         self.llm_client = LLMClientFactory.create_client(
-            self.config, provider=provider, model=model
+            self.config, provider=provider, model=model, max_tokens=max_tokens
         )
         
         # Validate --no-ocr flag with model capabilities
@@ -1254,6 +1260,12 @@ def main():
         action="store_true",
         help="Skip text extraction and upload PDF files directly to LLM (requires PDF-capable model)",
     )
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        help="Override max_tokens limit for LLM requests (e.g., --tokens 3000)",
+        metavar="N",
+    )
 
     args = parser.parse_args()
 
@@ -1326,6 +1338,7 @@ def main():
             model=args.model,
             provider=args.provider,
             no_ocr=args.no_ocr,
+            max_tokens=args.tokens,
         )
         app.run()
     except KeyboardInterrupt:
