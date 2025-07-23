@@ -24,7 +24,7 @@ The script workflow:
 ## Development Status
 
 Core functionality is implemented in `scan_namer.py`. The script includes:
-- **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini/Vertex AI)
+- **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini/Vertex AI with modern Gen AI SDK)
 - **PDF processing**: Text extraction, page extraction, base64 encoding for API uploads
 - **Vision model integration**: Direct PDF upload support for image-based documents
 - **Google Drive OAuth**: Authentication, file listing, downloading, renaming
@@ -61,12 +61,12 @@ Run with the bash wrapper:
 ## Python Project Structure
 
 Uses uv for package management with inline script metadata. Dependencies are declared in the Python script header and include:
-- Google API libraries (Drive, OAuth, Vertex AI)
+- Google API libraries (Drive, OAuth, modern Google Gen AI SDK)
 - LLM provider SDKs (anthropic, openai, requests for X.AI)
 - PDF processing (PyPDF2)
 - Utilities (python-dotenv, base64, logging)
 
-All dependencies are automatically managed by uv when running the script.
+All dependencies are automatically managed by uv when running the script. The Google integration uses the latest Google Gen AI SDK (google-genai) instead of the deprecated Vertex AI SDK, eliminating deprecation warnings.
 
 ## Project Files
 

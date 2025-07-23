@@ -9,7 +9,7 @@ using LLM analysis of document content.
 #     "google-auth-oauthlib==1.2.0",
 #     "google-auth==2.29.0",
 #     "google-api-python-client==2.133.0",
-#     "google-cloud-aiplatform>=1.38.0",
+#     "google-genai>=0.1.0",
 #     "anthropic>=0.7.0",
 #     "openai>=1.0.0",
 #     "PyPDF2==3.0.1",
@@ -759,24 +759,25 @@ class GoogleClient(BaseLLMClient):
 
     def _setup_client(self):
         try:
-            import vertexai
-            from vertexai.generative_models import GenerativeModel, Part
+            from google import genai
 
-            # Initialize Vertex AI
-            vertexai.init(project=self.project_id, location=self.location)
-            self.model_client = GenerativeModel(self.model)
-            self.Part = Part  # Store Part class for PDF upload
+            # Initialize Google Gen AI client for Vertex AI
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=self.location
+            )
 
         except ImportError:
             logging.error(
-                "Vertex AI library not installed. Please install with: pip install google-cloud-aiplatform"
+                "Google Gen AI library not installed. Please install with: pip install google-genai"
             )
             sys.exit(1)
 
     def analyze_document(
         self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
     ) -> Tuple[Optional[str], Dict]:
-        """Send document text or PDF to Vertex AI for analysis."""
+        """Send document text or PDF to Google Gen AI for analysis."""
         try:
             system_prompt = prompt_config.get("system_prompt", "")
             user_prompt = prompt_config.get("user_prompt", "")
@@ -784,22 +785,16 @@ class GoogleClient(BaseLLMClient):
             # Prepare content based on available input
             if document_text:
                 full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}"
-                content = [full_prompt]
+                contents = [full_prompt]
             elif pdf_path and self.supports_pdf():
-                # Google's Gemini vision models support PDF uploads
-                pdf_base64 = self._encode_pdf_to_base64(pdf_path)
-                if not pdf_base64:
+                # Upload PDF file using new SDK
+                try:
+                    uploaded_file = self.client.files.upload(file=pdf_path)
+                    full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
+                    contents = [full_prompt, uploaded_file]
+                except Exception as upload_error:
+                    logging.error(f"Failed to upload PDF: {upload_error}")
                     return None, {}
-                
-                full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
-                
-                content = [
-                    full_prompt,
-                    self.Part.from_data(
-                        data=base64.b64decode(pdf_base64),
-                        mime_type="application/pdf"
-                    )
-                ]
             else:
                 if pdf_path and not self.supports_pdf():
                     logging.error(f"Model {self.model} does not support PDF uploads. PDF support available in: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite")
@@ -807,15 +802,16 @@ class GoogleClient(BaseLLMClient):
                     logging.error("Neither document text nor PDF path provided")
                 return None, {}
 
-            response = self.model_client.generate_content(
-                content,
-                generation_config={
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config={
                     "max_output_tokens": self.max_tokens,
                     "temperature": self.temperature,
                 },
             )
 
-            # Vertex AI doesn't provide detailed token usage in the same format
+            # Google Gen AI SDK doesn't provide detailed token usage
             # Approximate token count (rough estimate)
             if document_text:
                 estimated_prompt_tokens = len(f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}") // 4
