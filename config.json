@@ -25,6 +25,8 @@
       },
       "google": {
         "api_key_env": "GOOGLE_API_KEY",
+        "project_id_env": "GOOGLE_PROJECT_ID",
+        "location": "us-central1",
         "available_models": [
           "gemini-2.5-pro",
           "gemini-2.5-flash",
