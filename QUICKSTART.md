@@ -13,7 +13,7 @@ cp .env.example .env
 # XAI_API_KEY=... (X.AI Grok)
 # ANTHROPIC_API_KEY=... (Claude)
 # OPENAI_API_KEY=... (OpenAI GPT)
-# GOOGLE_PROJECT_ID=... (Google Gemini/Vertex AI)
+# GOOGLE_API_KEY=... (Google Gemini)
 ```
 
 **💡 Tip**: Choose a provider with PDF-capable models for best results with image-based scans:

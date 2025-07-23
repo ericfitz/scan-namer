@@ -395,7 +395,9 @@ class PDFProcessor:
 class BaseLLMClient:
     """Base class for LLM clients."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+    def __init__(
+        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+    ):
         self.config = config
         self.provider = provider
         self.model = model
@@ -409,23 +411,26 @@ class BaseLLMClient:
         self.token_costs = []
 
     def analyze_document(
-        self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
+        self,
+        document_text: str = None,
+        prompt_config: Dict = None,
+        pdf_path: str = None,
     ) -> Tuple[Optional[str], Dict]:
         """Send document text or PDF to LLM for analysis.
-        
+
         Args:
             document_text: Extracted text content (if available)
             prompt_config: Prompt configuration dictionary
             pdf_path: Path to PDF file for direct upload (if text extraction failed)
         """
         raise NotImplementedError("Subclasses must implement analyze_document")
-    
+
     def _encode_pdf_to_base64(self, pdf_path: str) -> str:
         """Encode PDF file to base64 for API upload."""
         try:
             with open(pdf_path, "rb") as pdf_file:
                 pdf_bytes = pdf_file.read()
-                return base64.b64encode(pdf_bytes).decode('utf-8')
+                return base64.b64encode(pdf_bytes).decode("utf-8")
         except Exception as e:
             logging.error(f"Error encoding PDF to base64: {e}")
             return ""
@@ -434,7 +439,7 @@ class BaseLLMClient:
         """Check if the current model supports PDF upload."""
         pdf_support = self.config.get(f"llm.providers.{self.provider}.pdf_support", {})
         return pdf_support.get(self.model, False)
-    
+
     def get_total_costs(self) -> Dict:
         """Get total token costs for all requests."""
         if not self.token_costs:
@@ -466,7 +471,10 @@ class XAIClient(BaseLLMClient):
         return api_key
 
     def analyze_document(
-        self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
+        self,
+        document_text: str = None,
+        prompt_config: Dict = None,
+        pdf_path: str = None,
     ) -> Tuple[Optional[str], Dict]:
         """Send document text or PDF to Grok for analysis."""
         try:
@@ -490,7 +498,7 @@ class XAIClient(BaseLLMClient):
                 pdf_base64 = self._encode_pdf_to_base64(pdf_path)
                 if not pdf_base64:
                     return None, {}
-                
+
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
                 messages = [
                     {
@@ -498,21 +506,23 @@ class XAIClient(BaseLLMClient):
                         "content": prompt_config.get("system_prompt", ""),
                     },
                     {
-                        "role": "user", 
+                        "role": "user",
                         "content": [
                             {"type": "text", "text": user_message},
                             {
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:application/pdf;base64,{pdf_base64}"
-                                }
-                            }
-                        ]
+                                },
+                            },
+                        ],
                     },
                 ]
             else:
                 if pdf_path and not self.supports_pdf():
-                    logging.error(f"Model {self.model} does not support PDF uploads. PDF support available in: grok-4-0709, grok-vision-beta")
+                    logging.error(
+                        f"Model {self.model} does not support PDF uploads. PDF support available in: grok-4-0709, grok-vision-beta"
+                    )
                 else:
                     logging.error("Neither document text nor PDF path provided")
                 return None, {}
@@ -551,7 +561,9 @@ class XAIClient(BaseLLMClient):
 class AnthropicClient(BaseLLMClient):
     """Anthropic Claude API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+    def __init__(
+        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+    ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self._setup_client()
@@ -576,7 +588,10 @@ class AnthropicClient(BaseLLMClient):
             sys.exit(1)
 
     def analyze_document(
-        self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
+        self,
+        document_text: str = None,
+        prompt_config: Dict = None,
+        pdf_path: str = None,
     ) -> Tuple[Optional[str], Dict]:
         """Send document text or PDF to Claude for analysis."""
         try:
@@ -589,7 +604,7 @@ class AnthropicClient(BaseLLMClient):
                 pdf_base64 = self._encode_pdf_to_base64(pdf_path)
                 if not pdf_base64:
                     return None, {}
-                
+
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
                 messages = [
                     {
@@ -601,15 +616,17 @@ class AnthropicClient(BaseLLMClient):
                                 "source": {
                                     "type": "base64",
                                     "media_type": "application/pdf",
-                                    "data": pdf_base64
-                                }
-                            }
-                        ]
+                                    "data": pdf_base64,
+                                },
+                            },
+                        ],
                     }
                 ]
             else:
                 if pdf_path and not self.supports_pdf():
-                    logging.error(f"Model {self.model} does not support PDF uploads. PDF support available in: claude-opus-4-20250514, claude-sonnet-4-20250514, claude-3-7-sonnet-20250219, claude-3-5-sonnet-20241022")
+                    logging.error(
+                        f"Model {self.model} does not support PDF uploads. PDF support available in: claude-opus-4-20250514, claude-sonnet-4-20250514, claude-3-7-sonnet-20250219, claude-3-5-sonnet-20241022"
+                    )
                 else:
                     logging.error("Neither document text nor PDF path provided")
                 return None, {}
@@ -643,7 +660,9 @@ class AnthropicClient(BaseLLMClient):
 class OpenAIClient(BaseLLMClient):
     """OpenAI GPT API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+    def __init__(
+        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+    ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self._setup_client()
@@ -668,7 +687,10 @@ class OpenAIClient(BaseLLMClient):
             sys.exit(1)
 
     def analyze_document(
-        self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
+        self,
+        document_text: str = None,
+        prompt_config: Dict = None,
+        pdf_path: str = None,
     ) -> Tuple[Optional[str], Dict]:
         """Send document text or PDF to OpenAI for analysis."""
         try:
@@ -687,7 +709,7 @@ class OpenAIClient(BaseLLMClient):
                 pdf_base64 = self._encode_pdf_to_base64(pdf_path)
                 if not pdf_base64:
                     return None, {}
-                
+
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
                 messages = [
                     {
@@ -702,14 +724,16 @@ class OpenAIClient(BaseLLMClient):
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:application/pdf;base64,{pdf_base64}"
-                                }
-                            }
-                        ]
+                                },
+                            },
+                        ],
                     },
                 ]
             else:
                 if pdf_path and not self.supports_pdf():
-                    logging.error(f"Model {self.model} does not support PDF uploads. PDF support available in: o3, gpt-4o, gpt-4o-mini")
+                    logging.error(
+                        f"Model {self.model} does not support PDF uploads. PDF support available in: o3, gpt-4o, gpt-4o-mini"
+                    )
                 else:
                     logging.error("Neither document text nor PDF path provided")
                 return None, {}
@@ -741,7 +765,9 @@ class OpenAIClient(BaseLLMClient):
 class GoogleClient(BaseLLMClient):
     """Google Vertex AI API client."""
 
-    def __init__(self, config: ConfigManager, provider: str, model: str, max_tokens: int = None):
+    def __init__(
+        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+    ):
         super().__init__(config, provider, model, max_tokens)
         self.project_id = self._get_project_id()
         self.location = config.get(f"llm.providers.{provider}.location", "us-central1")
@@ -763,9 +789,8 @@ class GoogleClient(BaseLLMClient):
 
             # Initialize Google Gen AI client for Vertex AI
             self.client = genai.Client(
-                vertexai=True,
                 project=self.project_id,
-                location=self.location
+                location=self.location,
             )
 
         except ImportError:
@@ -775,7 +800,10 @@ class GoogleClient(BaseLLMClient):
             sys.exit(1)
 
     def analyze_document(
-        self, document_text: str = None, prompt_config: Dict = None, pdf_path: str = None
+        self,
+        document_text: str = None,
+        prompt_config: Dict = None,
+        pdf_path: str = None,
     ) -> Tuple[Optional[str], Dict]:
         """Send document text or PDF to Google Gen AI for analysis."""
         try:
@@ -797,7 +825,9 @@ class GoogleClient(BaseLLMClient):
                     return None, {}
             else:
                 if pdf_path and not self.supports_pdf():
-                    logging.error(f"Model {self.model} does not support PDF uploads. PDF support available in: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite")
+                    logging.error(
+                        f"Model {self.model} does not support PDF uploads. PDF support available in: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite"
+                    )
                 else:
                     logging.error("Neither document text nor PDF path provided")
                 return None, {}
@@ -814,9 +844,16 @@ class GoogleClient(BaseLLMClient):
             # Google Gen AI SDK doesn't provide detailed token usage
             # Approximate token count (rough estimate)
             if document_text:
-                estimated_prompt_tokens = len(f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}") // 4
+                estimated_prompt_tokens = (
+                    len(
+                        f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}"
+                    )
+                    // 4
+                )
             else:
-                estimated_prompt_tokens = len(f"{system_prompt}\n\n{user_prompt}") // 4 + 1000  # Estimate for PDF
+                estimated_prompt_tokens = (
+                    len(f"{system_prompt}\n\n{user_prompt}") // 4 + 1000
+                )  # Estimate for PDF
             estimated_completion_tokens = len(response.text) // 4
 
             cost_info = {
@@ -841,7 +878,10 @@ class LLMClientFactory:
 
     @staticmethod
     def create_client(
-        config: ConfigManager, provider: str = None, model: str = None, max_tokens: int = None
+        config: ConfigManager,
+        provider: str = None,
+        model: str = None,
+        max_tokens: int = None,
     ) -> BaseLLMClient:
         """Create appropriate LLM client based on provider."""
         if provider is None:
@@ -909,7 +949,7 @@ class ScanNamer:
         self.llm_client = LLMClientFactory.create_client(
             self.config, provider=provider, model=model, max_tokens=max_tokens
         )
-        
+
         # Validate --no-ocr flag with model capabilities
         if self.no_ocr and not self.llm_client.supports_pdf():
             logging.warning(
@@ -999,15 +1039,17 @@ class ScanNamer:
             return ""
 
         return filename
-    
+
     def _print_pdf_capable_models(self):
         """Print models that support PDF uploads for current provider."""
         provider = self.llm_client.provider
         pdf_support = self.config.get(f"llm.providers.{provider}.pdf_support", {})
         capable_models = [model for model, supports in pdf_support.items() if supports]
-        
+
         if capable_models:
-            logging.info(f"PDF-capable models for {provider}: {', '.join(capable_models)}")
+            logging.info(
+                f"PDF-capable models for {provider}: {', '.join(capable_models)}"
+            )
         else:
             logging.info(f"No PDF-capable models configured for {provider}")
 
@@ -1037,7 +1079,7 @@ class ScanNamer:
             use_pdf_upload = self.no_ocr
             document_text = None
             pdf_path_for_upload = None
-            
+
             if not use_pdf_upload:
                 # Try to extract text from PDF for LLM analysis
                 if self.pdf_processor.should_extract(page_count):
@@ -1048,7 +1090,9 @@ class ScanNamer:
                         temp_pdf_path, self.pdf_processor.extraction_pages
                     )
                 else:
-                    logging.info(f"Document has {page_count} pages, extracting all text")
+                    logging.info(
+                        f"Document has {page_count} pages, extracting all text"
+                    )
                     document_text = self.pdf_processor.extract_text(temp_pdf_path)
 
                 # Check if text extraction failed
@@ -1058,18 +1102,28 @@ class ScanNamer:
                     )
                     use_pdf_upload = True
                     document_text = None
-            
+
             if use_pdf_upload:
                 # Prepare PDF for upload (use shortened version if applicable)
                 if self.pdf_processor.should_extract(page_count):
                     # Create a shortened PDF for upload
-                    shortened_pdf_path = os.path.join(temp_dir, f"shortened_{file_id}.pdf")
-                    if self.pdf_processor.extract_pages(temp_pdf_path, shortened_pdf_path, self.pdf_processor.extraction_pages):
+                    shortened_pdf_path = os.path.join(
+                        temp_dir, f"shortened_{file_id}.pdf"
+                    )
+                    if self.pdf_processor.extract_pages(
+                        temp_pdf_path,
+                        shortened_pdf_path,
+                        self.pdf_processor.extraction_pages,
+                    ):
                         pdf_path_for_upload = shortened_pdf_path
-                        logging.info(f"Using shortened PDF ({self.pdf_processor.extraction_pages} pages) for upload")
+                        logging.info(
+                            f"Using shortened PDF ({self.pdf_processor.extraction_pages} pages) for upload"
+                        )
                     else:
                         pdf_path_for_upload = temp_pdf_path
-                        logging.warning("Failed to create shortened PDF, using full document")
+                        logging.warning(
+                            "Failed to create shortened PDF, using full document"
+                        )
                 else:
                     pdf_path_for_upload = temp_pdf_path
                     logging.info("Using full PDF for upload")

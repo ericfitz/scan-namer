@@ -4,12 +4,12 @@
 
 1. **Python 3.8+** installed on your system
 2. **uv** package manager installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
-3. **Google Cloud Project** with Drive API enabled
+3. **Google Drive API credentials** (OAuth 2.0)
 4. **LLM API access** from your chosen provider:
    - X.AI (Grok) - supports PDF uploads with Grok-4 and Grok Vision
    - Anthropic (Claude) - supports PDF uploads with Claude 4, 3.5/3.7 Sonnet
    - OpenAI (GPT) - supports PDF uploads with GPT-4o, GPT-4o-mini, o3
-   - Google (Gemini/Vertex AI) - supports PDF uploads with Gemini 2.5 series
+   - Google (Gemini) - supports PDF uploads with Gemini 2.5 series
 
 ## Setup Steps
 
@@ -61,13 +61,13 @@ Dependencies are managed automatically by uv using inline metadata in the Python
    LLM_MODEL=gpt-4o  # PDF capable
    ```
 
-   **For Google Vertex AI - PDF Support: ✓ Gemini 2.5 series:**
+   **For Google Gemini - PDF Support: ✓ Gemini 2.5 series:**
    ```
-   GOOGLE_PROJECT_ID=your_gcp_project_id
-   GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+   GOOGLE_API_KEY=your_google_api_key_here
    LLM_PROVIDER=google
    LLM_MODEL=gemini-2.5-flash  # PDF capable, fast & cost-effective
    ```
+   Get your API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 3. **Choose Your Strategy:**
 
