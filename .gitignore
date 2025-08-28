@@ -1,4 +1,6 @@
 # contain secrets
+ANTHROPIC_API_KEY.sh
+xai_api_key.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -211,4 +213,4 @@ vertexai-creds.json
 .claude/settings.local.json
 credentials.json
 token.json
-ANTHROPIC_API_KEY.sh
+
