@@ -1,6 +1,5 @@
 # contain secrets
-ANTHROPIC_API_KEY.sh
-xai_api_key.sh
+*_api_key
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
