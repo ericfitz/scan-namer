@@ -66,7 +66,7 @@
           "grok-3-mini"
         ],
         "pdf_support": {
-          "grok-4-0709": true,
+          "grok-4-0709": false,
           "grok-3": false,
           "grok-3-mini": false
         },
