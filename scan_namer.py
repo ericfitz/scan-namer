@@ -30,6 +30,7 @@ import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 import base64
 
+# ignore lint errors related to unresolved imports; using uv to avoid using venv
 import requests
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
