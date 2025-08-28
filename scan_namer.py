@@ -15,6 +15,7 @@ using LLM analysis of document content.
 #     "PyPDF2==3.0.1",
 #     "requests==2.31.0",
 #     "python-dotenv==1.0.1",
+#     "types-requests",
 # ]
 # ///
 
@@ -24,10 +25,10 @@ import logging
 import os
 import sys
 import tempfile
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
+# from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 import base64
-import io
 
 import requests
 from google.auth.transport.requests import Request
@@ -48,11 +49,12 @@ class ConfigManager:
         self.config = self._load_config()
         self._validate_config()
 
-    def _load_config(self) -> Dict:
+    def _load_config(self) -> Dict[str, Any]:
         """Load configuration from JSON file."""
         try:
             with open(self.config_file, "r") as f:
-                return json.load(f)
+                config_data = json.load(f)
+                return config_data
         except FileNotFoundError:
             logging.error(f"Configuration file {self.config_file} not found")
             sys.exit(1)
@@ -60,7 +62,7 @@ class ConfigManager:
             logging.error(f"Invalid JSON in {self.config_file}: {e}")
             sys.exit(1)
 
-    def _validate_config(self):
+    def _validate_config(self) -> None:
         """Validate required configuration sections exist."""
         required_sections = ["llm", "pdf", "google_drive", "logging"]
         for section in required_sections:
@@ -68,7 +70,7 @@ class ConfigManager:
                 logging.error(f"Missing required config section: {section}")
                 sys.exit(1)
 
-    def get(self, key_path: str, default=None):
+    def get(self, key_path: str, default=None) -> Any:
         """Get configuration value using dot notation (e.g., 'llm.api_key')."""
         # Check for environment variable override first
         env_value = self._get_env_override(key_path)
@@ -85,7 +87,7 @@ class ConfigManager:
                 return default
         return value
 
-    def _get_env_override(self, key_path: str):
+    def _get_env_override(self, key_path: str) -> Any:
         """Check for environment variable override for a config key."""
         # Map config keys to environment variable names
         env_mappings = {
@@ -112,7 +114,7 @@ class ConfigManager:
 
         return None
 
-    def _convert_env_value(self, value: str, key_path: str):
+    def _convert_env_value(self, value: str, key_path: str) -> Any:
         """Convert environment variable string to appropriate type."""
         # Integer conversions
         if key_path in [
@@ -149,11 +151,12 @@ class PromptManager:
         self.prompts_file = prompts_file
         self.prompts = self._load_prompts()
 
-    def _load_prompts(self) -> Dict:
+    def _load_prompts(self) -> Dict[str, Any]:
         """Load prompts from JSON file."""
         try:
             with open(self.prompts_file, "r") as f:
-                return json.load(f)
+                prompts_data = json.load(f)
+                return prompts_data
         except FileNotFoundError:
             logging.error(f"Prompts file {self.prompts_file} not found")
             sys.exit(1)
@@ -161,7 +164,7 @@ class PromptManager:
             logging.error(f"Invalid JSON in {self.prompts_file}: {e}")
             sys.exit(1)
 
-    def get_prompt(self, prompt_key: str) -> Dict:
+    def get_prompt(self, prompt_key: str) -> Dict[str, Any]:
         """Get prompt configuration by key."""
         if prompt_key not in self.prompts:
             raise ValueError(f"Prompt key '{prompt_key}' not found")
@@ -173,10 +176,10 @@ class GoogleDriveManager:
 
     def __init__(self, config: ConfigManager):
         self.config = config
-        self.service = None
+        self.service: Optional[Any] = None
         self._authenticate()
 
-    def _authenticate(self):
+    def _authenticate(self) -> None:
         """Authenticate with Google Drive API."""
         creds = None
         token_file = self.config.get("google_drive.token_file")
@@ -184,7 +187,7 @@ class GoogleDriveManager:
         scopes = self.config.get("google_drive.scopes")
 
         # Load existing token
-        if os.path.exists(token_file):
+        if token_file and os.path.exists(token_file):
             creds = Credentials.from_authorized_user_file(token_file, scopes)
 
         # If no valid credentials, get new ones
@@ -198,7 +201,7 @@ class GoogleDriveManager:
                     creds = None
 
             if not creds:
-                if not os.path.exists(creds_file):
+                if not creds_file or not os.path.exists(creds_file):
                     logging.error(
                         f"Google Drive credentials file {creds_file} not found"
                     )
@@ -212,15 +215,19 @@ class GoogleDriveManager:
                 logging.info("Completed Google Drive OAuth flow")
 
             # Save the credentials
-            with open(token_file, "w") as token:
-                token.write(creds.to_json())
-            logging.info(f"Saved credentials to {token_file}")
+            if token_file:
+                with open(token_file, "w") as token:
+                    token.write(creds.to_json())
+                logging.info(f"Saved credentials to {token_file}")
 
         self.service = build("drive", "v3", credentials=creds)
         logging.info("Successfully authenticated with Google Drive")
 
-    def list_folders(self, parent_id: str = "root") -> List[Dict]:
+    def list_folders(self, parent_id: str = "root") -> List[Dict[str, Any]]:
         """List folders in Google Drive."""
+        if self.service is None:
+            logging.error("Google Drive service not initialized")
+            return []
         try:
             query = f"'{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
             results = (
@@ -267,8 +274,11 @@ class GoogleDriveManager:
             print("Invalid input or cancelled")
             return None
 
-    def list_pdfs(self, folder_id: str) -> List[Dict]:
+    def list_pdfs(self, folder_id: str) -> List[Dict[str, Any]]:
         """List PDF files in a Google Drive folder."""
+        if self.service is None:
+            logging.error("Google Drive service not initialized")
+            return []
         try:
             query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
             results = (
@@ -289,6 +299,9 @@ class GoogleDriveManager:
 
     def download_file(self, file_id: str, output_path: str) -> bool:
         """Download a file from Google Drive."""
+        if self.service is None:
+            logging.error("Google Drive service not initialized")
+            return False
         try:
             request = self.service.files().get_media(fileId=file_id)
             with open(output_path, "wb") as f:
@@ -304,6 +317,9 @@ class GoogleDriveManager:
 
     def rename_file(self, file_id: str, new_name: str) -> bool:
         """Rename a file in Google Drive."""
+        if self.service is None:
+            logging.error("Google Drive service not initialized")
+            return False
         try:
             self.service.files().update(
                 fileId=file_id, body={"name": new_name}
@@ -334,11 +350,15 @@ class PDFProcessor:
             return 0
 
     def extract_pages(
-        self, input_path: str, output_path: str, num_pages: int = None
+        self, input_path: str, output_path: str, num_pages: Optional[int] = None
     ) -> bool:
         """Extract first N pages from PDF to a new file."""
         if num_pages is None:
-            num_pages = self.extraction_pages
+            extraction_pages = self.config.get("pdf.extraction_pages", 3)
+            if isinstance(extraction_pages, int):
+                num_pages = extraction_pages
+            else:
+                num_pages = 3
 
         try:
             with open(input_path, "rb") as input_file:
@@ -358,10 +378,14 @@ class PDFProcessor:
             logging.error(f"Error extracting pages: {e}")
             return False
 
-    def extract_text(self, pdf_path: str, max_pages: int = None) -> str:
+    def extract_text(self, pdf_path: str, max_pages: Optional[int] = None) -> str:
         """Extract text content from PDF for LLM analysis."""
         if max_pages is None:
-            max_pages = self.extraction_pages
+            extraction_pages = self.config.get("pdf.extraction_pages", 3)
+            if isinstance(extraction_pages, int):
+                max_pages = extraction_pages
+            else:
+                max_pages = 3
 
         try:
             text_content = []
@@ -389,14 +413,21 @@ class PDFProcessor:
 
     def should_extract(self, page_count: int) -> bool:
         """Determine if PDF should be truncated based on page count."""
-        return page_count > self.max_pages
+        max_pages = self.config.get("pdf.max_pages_before_extraction", 3)
+        if isinstance(max_pages, int):
+            return page_count > max_pages
+        return page_count > 3
 
 
 class BaseLLMClient:
     """Base class for LLM clients."""
 
     def __init__(
-        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+        self,
+        config: ConfigManager,
+        provider: str,
+        model: str,
+        max_tokens: Optional[int] = None,
     ):
         self.config = config
         self.provider = provider
@@ -408,14 +439,14 @@ class BaseLLMClient:
         else:
             self.max_tokens = config.get("llm.max_tokens", 1000)
         self.temperature = config.get("llm.temperature", 0.3)
-        self.token_costs = []
+        self.token_costs: List[Dict[str, Any]] = []
 
     def analyze_document(
         self,
-        document_text: str = None,
-        prompt_config: Dict = None,
-        pdf_path: str = None,
-    ) -> Tuple[Optional[str], Dict]:
+        document_text: Optional[str] = None,
+        prompt_config: Optional[Dict[str, Any]] = None,
+        pdf_path: Optional[str] = None,
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Send document text or PDF to LLM for analysis.
 
         Args:
@@ -438,9 +469,11 @@ class BaseLLMClient:
     def supports_pdf(self) -> bool:
         """Check if the current model supports PDF upload."""
         pdf_support = self.config.get(f"llm.providers.{self.provider}.pdf_support", {})
-        return pdf_support.get(self.model, False)
+        if isinstance(pdf_support, dict):
+            return pdf_support.get(self.model, False)
+        return False
 
-    def get_total_costs(self) -> Dict:
+    def get_total_costs(self) -> Dict[str, int]:
         """Get total token costs for all requests."""
         if not self.token_costs:
             return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -458,7 +491,11 @@ class XAIClient(BaseLLMClient):
     """X.AI (Grok) API client."""
 
     def __init__(
-        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+        self,
+        config: ConfigManager,
+        provider: str,
+        model: str,
+        max_tokens: Optional[int] = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -466,6 +503,11 @@ class XAIClient(BaseLLMClient):
 
     def _get_api_key(self) -> str:
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
+        if not isinstance(api_key_env, str):
+            logging.error(
+                f"Invalid API key environment variable name for {self.provider}"
+            )
+            sys.exit(1)
         api_key = os.getenv(api_key_env)
         if not api_key:
             logging.error(f"API key not found in environment variable: {api_key_env}")
@@ -474,12 +516,16 @@ class XAIClient(BaseLLMClient):
 
     def analyze_document(
         self,
-        document_text: str = None,
-        prompt_config: Dict = None,
-        pdf_path: str = None,
-    ) -> Tuple[Optional[str], Dict]:
+        document_text: Optional[str] = None,
+        prompt_config: Optional[Dict[str, Any]] = None,
+        pdf_path: Optional[str] = None,
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Send document text or PDF to Grok for analysis."""
         try:
+            if prompt_config is None:
+                logging.error("Prompt config is required")
+                return None, {}
+
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
@@ -536,8 +582,12 @@ class XAIClient(BaseLLMClient):
                 "temperature": self.temperature,
             }
 
+            endpoint = self.endpoint
+            if not isinstance(endpoint, str):
+                logging.error("Invalid API endpoint configuration")
+                return None, {}
             response = requests.post(
-                self.endpoint, json=payload, headers=headers, timeout=60
+                endpoint, json=payload, headers=headers, timeout=60
             )
             response.raise_for_status()
             result = response.json()
@@ -564,7 +614,11 @@ class AnthropicClient(BaseLLMClient):
     """Anthropic Claude API client."""
 
     def __init__(
-        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+        self,
+        config: ConfigManager,
+        provider: str,
+        model: str,
+        max_tokens: Optional[int] = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -578,7 +632,7 @@ class AnthropicClient(BaseLLMClient):
             sys.exit(1)
         return api_key
 
-    def _setup_client(self):
+    def _setup_client(self) -> None:
         try:
             import anthropic
 
@@ -591,12 +645,16 @@ class AnthropicClient(BaseLLMClient):
 
     def analyze_document(
         self,
-        document_text: str = None,
-        prompt_config: Dict = None,
-        pdf_path: str = None,
-    ) -> Tuple[Optional[str], Dict]:
+        document_text: Optional[str] = None,
+        prompt_config: Optional[Dict[str, Any]] = None,
+        pdf_path: Optional[str] = None,
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Send document text or PDF to Claude for analysis."""
         try:
+            if prompt_config is None:
+                logging.error("Prompt config is required")
+                return None, {}
+
             # Prepare message content based on available input
             if document_text:
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
@@ -663,7 +721,11 @@ class OpenAIClient(BaseLLMClient):
     """OpenAI GPT API client."""
 
     def __init__(
-        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+        self,
+        config: ConfigManager,
+        provider: str,
+        model: str,
+        max_tokens: Optional[int] = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -677,7 +739,7 @@ class OpenAIClient(BaseLLMClient):
             sys.exit(1)
         return api_key
 
-    def _setup_client(self):
+    def _setup_client(self) -> None:
         try:
             import openai
 
@@ -690,12 +752,16 @@ class OpenAIClient(BaseLLMClient):
 
     def analyze_document(
         self,
-        document_text: str = None,
-        prompt_config: Dict = None,
-        pdf_path: str = None,
-    ) -> Tuple[Optional[str], Dict]:
+        document_text: Optional[str] = None,
+        prompt_config: Optional[Dict[str, Any]] = None,
+        pdf_path: Optional[str] = None,
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Send document text or PDF to OpenAI for analysis."""
         try:
+            if prompt_config is None:
+                logging.error("Prompt config is required")
+                return None, {}
+
             # Prepare message content based on available input
             if document_text:
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
@@ -768,7 +834,11 @@ class GoogleClient(BaseLLMClient):
     """Google Vertex AI API client."""
 
     def __init__(
-        self, config: ConfigManager, provider: str, model: str, max_tokens: int = None
+        self,
+        config: ConfigManager,
+        provider: str,
+        model: str,
+        max_tokens: Optional[int] = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.project_id = self._get_project_id()
@@ -785,7 +855,7 @@ class GoogleClient(BaseLLMClient):
             sys.exit(1)
         return project_id
 
-    def _setup_client(self):
+    def _setup_client(self) -> None:
         try:
             from google import genai
 
@@ -803,12 +873,16 @@ class GoogleClient(BaseLLMClient):
 
     def analyze_document(
         self,
-        document_text: str = None,
-        prompt_config: Dict = None,
-        pdf_path: str = None,
-    ) -> Tuple[Optional[str], Dict]:
+        document_text: Optional[str] = None,
+        prompt_config: Optional[Dict[str, Any]] = None,
+        pdf_path: Optional[str] = None,
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Send document text or PDF to Google Gen AI for analysis."""
         try:
+            if prompt_config is None:
+                logging.error("Prompt config is required")
+                return None, {}
+
             system_prompt = prompt_config.get("system_prompt", "")
             user_prompt = prompt_config.get("user_prompt", "")
 
@@ -881,9 +955,9 @@ class LLMClientFactory:
     @staticmethod
     def create_client(
         config: ConfigManager,
-        provider: str = None,
-        model: str = None,
-        max_tokens: int = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
     ) -> BaseLLMClient:
         """Create appropriate LLM client based on provider."""
         if provider is None:
@@ -895,9 +969,14 @@ class LLMClientFactory:
             if not model:
                 model = config.get(f"llm.providers.{provider}.default_model")
 
+        # Ensure model is not None
+        if model is None:
+            logging.error("No model specified and no default model found")
+            sys.exit(1)
+
         # Validate provider exists
         providers_config = config.get("llm.providers", {})
-        if provider not in providers_config:
+        if isinstance(providers_config, dict) and provider not in providers_config:
             logging.error(
                 f"Unknown provider: {provider}. Available: {list(providers_config.keys())}"
             )
@@ -905,7 +984,11 @@ class LLMClientFactory:
 
         # Validate model is available for provider
         available_models = config.get(f"llm.providers.{provider}.available_models", [])
-        if available_models and model not in available_models:
+        if (
+            isinstance(available_models, list)
+            and available_models
+            and model not in available_models
+        ):
             logging.warning(
                 f"Model '{model}' not in available models for {provider}: {available_models}"
             )
@@ -934,10 +1017,10 @@ class ScanNamer:
         self,
         config_file: str = "config.json",
         dry_run: bool = False,
-        model: str = None,
-        provider: str = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
         no_ocr: bool = False,
-        max_tokens: int = None,
+        max_tokens: Optional[int] = None,
     ):
         self.config = ConfigManager(config_file)
         self.prompts = PromptManager()
@@ -958,11 +1041,11 @@ class ScanNamer:
                 f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which does not support PDF uploads."
             )
             logging.warning(
-                f"PDF fallback will not work. Consider using a vision-enabled model."
+                "PDF fallback will not work. Consider using a vision-enabled model."
             )
             self._print_pdf_capable_models()
 
-    def _setup_logging(self):
+    def _setup_logging(self) -> None:
         """Set up logging configuration."""
         import datetime
 
@@ -974,7 +1057,7 @@ class ScanNamer:
 
         # Create custom formatter for RFC3339/ISO8601 with milliseconds
         class RFC3339Formatter(logging.Formatter):
-            def formatTime(self, record, datefmt=None):
+            def formatTime(self, record, datefmt=None) -> str:
                 dt = datetime.datetime.fromtimestamp(
                     record.created, tz=datetime.timezone.utc
                 )
@@ -1042,7 +1125,7 @@ class ScanNamer:
 
         return filename
 
-    def _print_pdf_capable_models(self):
+    def _print_pdf_capable_models(self) -> None:
         """Print models that support PDF uploads for current provider."""
         provider = self.llm_client.provider
         pdf_support = self.config.get(f"llm.providers.{provider}.pdf_support", {})
@@ -1055,7 +1138,7 @@ class ScanNamer:
         else:
             logging.info(f"No PDF-capable models configured for {provider}")
 
-    def process_document(self, file_info: Dict, temp_dir: str) -> bool:
+    def process_document(self, file_info: Dict[str, Any], temp_dir: str) -> bool:
         """Process a single document."""
         file_id = file_info["id"]
         original_name = file_info["name"]
@@ -1168,7 +1251,7 @@ class ScanNamer:
             )
 
             if self.dry_run:
-                print(f"DRY RUN - Would rename:")
+                print("DRY RUN - Would rename:")
                 print(f"  From: {original_name}")
                 print(f"  To:   {suggested_name}")
                 return True
@@ -1192,7 +1275,7 @@ class ScanNamer:
             if os.path.exists(shortened_pdf_path):
                 os.unlink(shortened_pdf_path)
 
-    def run(self):
+    def run(self) -> None:
         """Main execution method."""
         try:
             logging.info("Starting Scan Namer")
@@ -1272,7 +1355,7 @@ class ScanNamer:
             raise
 
 
-def main():
+def main() -> None:
     """Entry point."""
     load_dotenv()  # Load environment variables from .env file
 

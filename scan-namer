@@ -1,7 +1,5 @@
 #!/bin/bash
-"""
-Scan Namer wrapper script - uses uv to run the Python script with dependencies
-"""
+# Scan Namer wrapper script - uses uv to run the Python script with dependencies
 
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then

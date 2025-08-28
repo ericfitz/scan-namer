@@ -1,6 +1,6 @@
 {
   "llm": {
-    "provider": "openapi",
+    "provider": "openai",
     "model": "gpt-5-2025-08-07",
     "max_tokens": 1000,
     "temperature": 0.3,
