@@ -1,7 +1,7 @@
 {
   "llm": {
-    "provider": "google",
-    "model": "gemini-2.5-flash",
+    "provider": "xai",
+    "model": "grok-4-0709",
     "max_tokens": 1000,
     "temperature": 0.3,
     "providers": {
@@ -12,14 +12,16 @@
           "claude-opus-4-20250514",
           "claude-sonnet-4-20250514",
           "claude-3-7-sonnet-20250219",
-          "claude-3-5-sonnet-20241022"
+          "claude-3-5-sonnet-20241022",
+          "claude-3-5-haiku-20241022"
         ],
         "pdf_support": {
           "claude-opus-4-1-20250805": true,
           "claude-opus-4-20250514": true,
           "claude-sonnet-4-20250514": true,
           "claude-3-7-sonnet-20250219": true,
-          "claude-3-5-sonnet-20241022": true
+          "claude-3-5-sonnet-20241022": true,
+          "claude-3-5-haiku-20241022": false
         },
         "default_model": "claude-sonnet-4-20250514"
       },
