@@ -12,6 +12,7 @@ I wanted to build a tool that would read the documents and rename them to someth
 - **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini)
 - **Smart PDF processing**: Text extraction with automatic fallback to direct PDF upload
 - **Vision model support**: Handles image-based PDFs when text extraction fails or if preferred
+- **OCR embedding**: Automatically detects image-only PDFs and adds searchable text layer
 - **Flexible configuration**: Environment variables override JSON config
 - **Dry-run mode**: Test functionality without making changes
 - **Intelligent file detection**: Configurable patterns for generic filenames
@@ -76,6 +77,7 @@ cp .env.example .env
 ./scan-namer --list-models             # Show models with PDF support indicators
 ./scan-namer --dry-run                 # Test mode (no actual renaming)
 ./scan-namer --no-ocr                  # Skip text extraction, upload PDFs directly
+./scan-namer --enable-ocr-embedding    # Enable OCR for image-only PDFs
 ./scan-namer --provider anthropic      # Use specific provider
 ./scan-namer --model claude-sonnet-4-20250514  # Use specific model
 ./scan-namer --verbose                 # Enable debug logging

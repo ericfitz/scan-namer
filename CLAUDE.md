@@ -34,22 +34,25 @@ The script workflow:
 - Lists files from a defined Google Drive path
 - Identifies generically named documents using configurable patterns
 - Downloads documents for analysis
+- **OCR Detection**: If `--enable-ocr-embedding` is used, detects image-only PDFs and performs OCR
 - **Text Extraction Mode**: Extracts text from PDFs, shortens large documents to first N pages
 - **PDF Upload Mode**: For image-based PDFs or when `--no-ocr` flag is used, uploads PDF directly to vision models
 - **Smart Fallback**: Automatically switches to PDF upload if text extraction fails
 - Sends content to LLM with customizable prompts to suggest descriptive filenames
 - Validates and cleans suggested filenames according to filesystem rules
 - Renames documents in Google Drive with suggested titles (dry-run mode available)
+- **OCR Embedding**: Creates and uploads searchable PDFs for image-only documents
 - Comprehensive logging with RFC3339 timestamps and token usage tracking
-- Cleans up temporary files (including shortened PDFs)
+- Cleans up temporary files (including shortened PDFs and OCR-processed files)
 
 ## Development Status
 
 Core functionality is implemented in `scan_namer.py`. The script includes:
 - **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini/Vertex AI with modern Gen AI SDK)
 - **PDF processing**: Text extraction, page extraction, base64 encoding for API uploads
+- **OCR capabilities**: Image-only PDF detection, Tesseract OCR integration, searchable PDF creation
 - **Vision model integration**: Direct PDF upload support for image-based documents
-- **Google Drive OAuth**: Authentication, file listing, downloading, renaming
+- **Google Drive OAuth**: Authentication, file listing, downloading, renaming, updating
 - **Flexible configuration**: JSON config with environment variable overrides
 - **Comprehensive logging**: RFC3339 timestamps, token usage tracking, detailed operation logs
 - **Model validation**: PDF capability checking, early warnings for incompatible model/flag combinations
@@ -70,8 +73,9 @@ Run with the bash wrapper:
 
 ## Key Integrations
 
-- **Google Drive API**: OAuth authentication, file listing, downloading, and renaming
+- **Google Drive API**: OAuth authentication, file listing, downloading, renaming, and updating
 - **PDF Processing**: Text extraction, page extraction, base64 encoding, temporary file management
+- **OCR Integration**: Tesseract OCR via pytesseract, pdf2image for PDF-to-image conversion
 - **Multi-LLM Integration**: 
   - X.AI Grok API (vision models: Grok-4, Grok Vision Beta)
   - Anthropic Claude API (PDF support: Claude 4, 3.5/3.7 Sonnet)
@@ -131,6 +135,7 @@ All dependencies are automatically managed by uv when running the script. The Go
 ### Testing & Validation
 - `./scan-namer --dry-run`: Test functionality without making changes
 - `./scan-namer --no-ocr --dry-run`: Test PDF upload mode
+- `./scan-namer --enable-ocr-embedding --dry-run`: Test OCR detection and processing
 - `./scan-namer --list-models`: Check model PDF capabilities
 - `./scan-namer --verbose`: Enable debug logging
 

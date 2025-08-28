@@ -78,6 +78,12 @@
     "max_pages_before_extraction": 3,
     "extraction_pages": 3
   },
+  "ocr": {
+    "enable_embedding": false,
+    "min_text_per_page": 50,
+    "language": "eng",
+    "dpi": 300
+  },
   "google_drive": {
     "credentials_file": "credentials.json",
     "token_file": "token.json",
