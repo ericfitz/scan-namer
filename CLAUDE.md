@@ -6,6 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Python-based tool for automatically renaming scanned documents in Google Drive based on their content. The tool supports multiple LLM providers (X.AI, Anthropic, OpenAI, Google) with both text extraction and direct PDF upload capabilities for vision-enabled models. It generates meaningful filenames for generically named scanned documents like "20240108_Raven_Scan.pdf".
 
+## Quick Development Commands
+
+```bash
+# Run in test mode (no actual renaming)
+./scan-namer --dry-run
+
+# Run with debug logging
+./scan-namer --verbose
+
+# Check available models and their capabilities
+./scan-namer --list-models
+
+# Test with specific provider/model
+./scan-namer --provider anthropic --model claude-sonnet-4-20250514 --dry-run
+
+# Test PDF upload mode (vision models only)
+./scan-namer --no-ocr --dry-run
+
+# Normal operation (requires setup)
+./scan-namer
+```
+
 ## Core Functionality
 
 The script workflow:
@@ -58,6 +80,29 @@ Run with the bash wrapper:
 - **Configuration Management**: JSON config with environment variable overrides
 - **Logging**: RFC3339 formatted logs with token usage and cost tracking
 
+## Code Architecture
+
+The application follows object-oriented design with clear separation of concerns:
+
+### Core Classes (scan_namer.py)
+- **ConfigManager** (line 45): Handles JSON configuration and environment variable overrides
+- **PromptManager** (line 148): Loads and formats LLM prompts from prompts.json
+- **GoogleDriveManager** (line 175): OAuth authentication, file operations (list, download, rename)
+- **PDFProcessor** (line 335): Text extraction, page shortening, base64 encoding for API uploads
+- **BaseLLMClient** (line 423): Abstract base for LLM providers with standard interface
+  - **XAIClient** (line 491): X.AI/Grok implementation with vision support
+  - **AnthropicClient** (line 614): Claude implementation with PDF upload
+  - **OpenAIClient** (line 721): GPT implementation with vision models
+  - **GoogleClient** (line 834): Gemini implementation using google-genai SDK
+- **LLMClientFactory** (line 953): Creates appropriate LLM client based on provider
+- **ScanNamer** (line 1014): Main orchestrator coordinating all components
+
+### Key Design Patterns
+- **Factory Pattern**: LLMClientFactory for provider-agnostic client creation
+- **Template Method**: BaseLLMClient defines interface, subclasses implement specifics
+- **Configuration Management**: Centralized config with environment variable overrides
+- **Separation of Concerns**: Each class handles one responsibility (PDF processing, Drive operations, LLM communication)
+
 ## Python Project Structure
 
 Uses uv for package management with inline script metadata. Dependencies are declared in the Python script header and include:
@@ -100,4 +145,28 @@ All dependencies are automatically managed by uv when running the script. The Go
 - Test environment variable overrides
 - Test with various PDF types (text-rich vs image-heavy)
 
-**Note**: No automated testing framework - relies on manual testing with real Google Drive and LLM APIs
+## Development Notes
+
+### Testing Approach
+- No automated testing framework - relies on manual testing with real Google Drive and LLM APIs
+- Always use `--dry-run` flag when testing to avoid unintended file renames
+- Test text extraction and PDF upload modes separately
+- Verify model capabilities with `--list-models` before testing specific providers
+
+### Key Configuration Points
+- **Environment variables always override JSON config** - check `.env` first when debugging
+- **Generic filename patterns** are configurable via `GENERIC_FILENAME_PATTERNS` env var
+- **PDF processing thresholds** controlled by `PDF_MAX_PAGES_BEFORE_EXTRACTION` and `PDF_EXTRACTION_PAGES`
+- **Model selection** can be overridden with `LLM_PROVIDER` and `LLM_MODEL` env vars
+
+### Error Handling Patterns
+- Text extraction failures automatically trigger PDF upload fallback (if model supports it)
+- Model capability validation happens early with clear warnings
+- Temporary files are cleaned up even on errors
+- Google Drive operations use exponential backoff for retries
+
+### Working with LLM Providers
+- Each provider client inherits from BaseLLMClient for consistent interface
+- PDF support is explicitly declared in config.json per model
+- Vision models require base64-encoded PDF content
+- Token usage and costs are logged for all providers
