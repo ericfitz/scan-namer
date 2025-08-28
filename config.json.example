@@ -8,18 +8,18 @@
       "anthropic": {
         "api_key_env": "ANTHROPIC_API_KEY",
         "available_models": [
+          "claude-opus-4-1-20250805",
           "claude-opus-4-20250514",
           "claude-sonnet-4-20250514",
           "claude-3-7-sonnet-20250219",
-          "claude-3-5-sonnet-20241022",
-          "claude-3-5-haiku-20241022"
+          "claude-3-5-sonnet-20241022"
         ],
         "pdf_support": {
+          "claude-opus-4-1-20250805": true,
           "claude-opus-4-20250514": true,
           "claude-sonnet-4-20250514": true,
           "claude-3-7-sonnet-20250219": true,
-          "claude-3-5-sonnet-20241022": true,
-          "claude-3-5-haiku-20241022": false
+          "claude-3-5-sonnet-20241022": true
         },
         "default_model": "claude-sonnet-4-20250514"
       },
@@ -30,40 +30,30 @@
         "available_models": [
           "gemini-2.5-pro",
           "gemini-2.5-flash",
-          "gemini-2.5-flash-lite",
-          "gemini-2.0-flash",
-          "gemini-2.0-flash-lite"
+          "gemini-2.5-flash-lite"
         ],
         "pdf_support": {
           "gemini-2.5-pro": true,
           "gemini-2.5-flash": true,
-          "gemini-2.5-flash-lite": true,
-          "gemini-2.0-flash": false,
-          "gemini-2.0-flash-lite": false
+          "gemini-2.5-flash-lite": true
         },
         "default_model": "gemini-2.5-flash"
       },
       "openai": {
         "api_key_env": "OPENAI_API_KEY",
         "available_models": [
-          "gpt-4.1",
-          "gpt-4.1-mini",
-          "gpt-4.1-nano",
-          "o3",
-          "o4-mini",
-          "gpt-4o",
-          "gpt-4o-mini"
+          "gpt-5-2025-08-07",
+          "gpt-5-mini-2025-08-07",
+          "gpt-5-nano-2025-08-07",
+          "gpt-4.1-2025-04-14"
         ],
         "pdf_support": {
-          "gpt-4.1": false,
-          "gpt-4.1-mini": false,
-          "gpt-4.1-nano": false,
-          "o3": true,
-          "o4-mini": false,
-          "gpt-4o": true,
-          "gpt-4o-mini": true
+          "gpt-5-2025-08-07": true,
+          "gpt-5-mini-2025-08-07": false,
+          "gpt-5-nano-2025-08-07": false,
+          "gpt-4.1-2025-04-14": false
         },
-        "default_model": "gpt-4.1"
+        "default_model": "gpt-5-2025-08-07"
       },
       "xai": {
         "api_endpoint": "https://api.x.ai/v1/chat/completions",
@@ -71,16 +61,12 @@
         "available_models": [
           "grok-4-0709",
           "grok-3",
-          "grok-3-mini",
-          "grok-beta",
-          "grok-vision-beta"
+          "grok-3-mini"
         ],
         "pdf_support": {
           "grok-4-0709": true,
           "grok-3": false,
-          "grok-3-mini": false,
-          "grok-beta": false,
-          "grok-vision-beta": true
+          "grok-3-mini": false
         },
         "default_model": "grok-4-0709"
       }
