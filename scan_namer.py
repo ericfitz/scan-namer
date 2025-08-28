@@ -496,9 +496,30 @@ class XAIClient(BaseLLMClient):
                     {"role": "user", "content": user_message},
                 ]
             elif pdf_path and self.supports_pdf():
-                # X.AI doesn't actually support PDF uploads, this should not be reached
-                logging.error("X.AI API does not support direct PDF uploads")
-                return None, {}
+                # For vision models, encode PDF as base64
+                pdf_base64 = self._encode_pdf_to_base64(pdf_path)
+                if not pdf_base64:
+                    return None, {}
+
+                user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
+                messages = [
+                    {
+                        "role": "system",
+                        "content": prompt_config.get("system_prompt", ""),
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_message},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:application/pdf;base64,{pdf_base64}"
+                                },
+                            },
+                        ],
+                    },
+                ]
             else:
                 if pdf_path and not self.supports_pdf():
                     logging.error(
