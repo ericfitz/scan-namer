@@ -46,8 +46,6 @@ import PyPDF2
 from dotenv import load_dotenv
 import pytesseract
 from pdf2image import convert_from_path
-from PIL import Image
-import io
 
 
 class ConfigManager:
@@ -350,14 +348,13 @@ class GoogleDriveManager:
             return False
         try:
             # Create media upload object
-            media = MediaFileUpload(file_path, mimetype='application/pdf', resumable=True)
-            
+            media = MediaFileUpload(
+                file_path, mimetype="application/pdf", resumable=True
+            )
+
             # Update the file
-            self.service.files().update(
-                fileId=file_id,
-                media_body=media
-            ).execute()
-            
+            self.service.files().update(fileId=file_id, media_body=media).execute()
+
             logging.info(f"Updated file {file_id} with new content from {file_path}")
             return True
         except HttpError as e:
@@ -455,33 +452,37 @@ class PDFProcessor:
             return page_count > max_pages
         return page_count > 3
 
-    def detect_image_only_pdf(self, pdf_path: str, min_text_per_page: Optional[int] = None) -> bool:
+    def detect_image_only_pdf(
+        self, pdf_path: str, min_text_per_page: Optional[int] = None
+    ) -> bool:
         """Detect if a PDF contains only images with no extractable text."""
         if min_text_per_page is None:
             min_text_per_page = self.config.get("ocr.min_text_per_page", 50)
         try:
             total_text_length = 0
             page_count = 0
-            
+
             with open(pdf_path, "rb") as f:
                 reader = PyPDF2.PdfReader(f)
                 page_count = len(reader.pages)
-                
+
                 for page in reader.pages:
                     page_text = page.extract_text()
                     total_text_length += len(page_text.strip())
-            
+
             # Calculate average text per page
             avg_text_per_page = total_text_length / page_count if page_count > 0 else 0
-            
+
             # If average text per page is less than threshold, consider it image-only
             is_image_only = avg_text_per_page < min_text_per_page
-            
-            logging.debug(f"PDF text analysis: {total_text_length} chars across {page_count} pages "
-                         f"(avg: {avg_text_per_page:.1f} chars/page). Image-only: {is_image_only}")
-            
+
+            logging.debug(
+                f"PDF text analysis: {total_text_length} chars across {page_count} pages "
+                f"(avg: {avg_text_per_page:.1f} chars/page). Image-only: {is_image_only}"
+            )
+
             return is_image_only
-            
+
         except Exception as e:
             logging.error(f"Error detecting image-only PDF: {e}")
             return False
@@ -489,17 +490,17 @@ class PDFProcessor:
     def perform_ocr(self, pdf_path: str, language: Optional[str] = None) -> List[str]:
         """Perform OCR on a PDF and return text for each page."""
         ocr_results = []
-        
+
         # Get OCR configuration
         if language is None:
             language = self.config.get("ocr.language", "eng")
         dpi = self.config.get("ocr.dpi", 300)
-        
+
         try:
             # Convert PDF to images
             logging.info(f"Converting PDF to images for OCR (DPI: {dpi})...")
             images = convert_from_path(pdf_path, dpi=dpi)
-            
+
             # Perform OCR on each page
             for i, image in enumerate(images):
                 logging.debug(f"Performing OCR on page {i + 1}/{len(images)}...")
@@ -509,28 +510,29 @@ class PDFProcessor:
                 except Exception as e:
                     logging.error(f"OCR failed on page {i + 1}: {e}")
                     ocr_results.append("")
-            
+
             logging.info(f"OCR completed on {len(images)} pages")
             return ocr_results
-            
+
         except Exception as e:
             logging.error(f"Error performing OCR: {e}")
             return []
 
-    def create_searchable_pdf(self, original_pdf_path: str, ocr_text_list: List[str], 
-                             output_path: str) -> bool:
+    def create_searchable_pdf(
+        self, original_pdf_path: str, ocr_text_list: List[str], output_path: str
+    ) -> bool:
         """Create a searchable PDF by adding OCR text as an invisible layer."""
         try:
             # Read original PDF
             with open(original_pdf_path, "rb") as input_file:
                 reader = PyPDF2.PdfReader(input_file)
                 writer = PyPDF2.PdfWriter()
-                
+
                 # Process each page
                 for page_num, page in enumerate(reader.pages):
                     # Create a new page with the same dimensions
-                    new_page = writer.add_page(page)
-                    
+                    writer.add_page(page)
+
                     # If we have OCR text for this page, we'll add it as metadata
                     # Note: PyPDF2 doesn't directly support invisible text layers,
                     # but we can add the text to the page's content stream in a way
@@ -540,20 +542,22 @@ class PDFProcessor:
                         # to use a more sophisticated library like reportlab for better
                         # text layer handling
                         pass
-                
+
                 # Add metadata indicating OCR was performed
-                writer.add_metadata({
-                    '/OCR': 'Tesseract',
-                    '/OCRDate': str(datetime.now()),
-                })
-                
+                writer.add_metadata(
+                    {
+                        "/OCR": "Tesseract",
+                        "/OCRDate": str(datetime.now()),
+                    }
+                )
+
                 # Write the output file
                 with open(output_path, "wb") as output_file:
                     writer.write(output_file)
-                
+
                 logging.info(f"Created searchable PDF at {output_path}")
                 return True
-                
+
         except Exception as e:
             logging.error(f"Error creating searchable PDF: {e}")
             return False
@@ -1284,6 +1288,7 @@ class ScanNamer:
         """Process a single document."""
         file_id = file_info["id"]
         original_name = file_info["name"]
+        document_text = None  # Initialize variable to avoid scope issues
 
         logging.info(f"Processing: {original_name}")
 
@@ -1301,42 +1306,65 @@ class ScanNamer:
             # Get page count
             page_count = self.pdf_processor.get_page_count(temp_pdf_path)
             logging.info(f"Document has {page_count} pages")
-            
+
             # Check if OCR embedding is enabled and PDF is image-only
-            if self.enable_ocr_embedding and self.pdf_processor.detect_image_only_pdf(temp_pdf_path):
-                logging.info("Detected image-only PDF, performing OCR to create searchable PDF...")
-                
+            if self.enable_ocr_embedding and self.pdf_processor.detect_image_only_pdf(
+                temp_pdf_path
+            ):
+                logging.info(
+                    "Detected image-only PDF, performing OCR to create searchable PDF..."
+                )
+
                 # Perform OCR
                 ocr_results = self.pdf_processor.perform_ocr(temp_pdf_path)
-                
+
                 if ocr_results:
                     # Create searchable PDF
-                    searchable_pdf_path = os.path.join(temp_dir, f"searchable_{file_id}.pdf")
-                    if self.pdf_processor.create_searchable_pdf(temp_pdf_path, ocr_results, searchable_pdf_path):
+                    searchable_pdf_path = os.path.join(
+                        temp_dir, f"searchable_{file_id}.pdf"
+                    )
+                    if self.pdf_processor.create_searchable_pdf(
+                        temp_pdf_path, ocr_results, searchable_pdf_path
+                    ):
                         # Upload the searchable PDF back to Google Drive
                         if not self.dry_run:
-                            if self.drive_manager.update_file(file_id, searchable_pdf_path):
-                                logging.info("Successfully uploaded searchable PDF to Google Drive")
+                            if self.drive_manager.update_file(
+                                file_id, searchable_pdf_path
+                            ):
+                                logging.info(
+                                    "Successfully uploaded searchable PDF to Google Drive"
+                                )
                             else:
-                                logging.error("Failed to upload searchable PDF to Google Drive")
+                                logging.error(
+                                    "Failed to upload searchable PDF to Google Drive"
+                                )
                         else:
-                            logging.info("DRY RUN - Would upload searchable PDF to Google Drive")
-                        
+                            logging.info(
+                                "DRY RUN - Would upload searchable PDF to Google Drive"
+                            )
+
                         # Clean up the searchable PDF
                         if os.path.exists(searchable_pdf_path):
                             os.unlink(searchable_pdf_path)
-                        
+
                         # Use OCR text for document analysis
-                        document_text = "\n\n".join([f"--- Page {i+1} ---\n{text}" 
-                                                    for i, text in enumerate(ocr_results) if text.strip()])
-                        logging.info(f"Extracted {len(document_text)} characters from OCR")
+                        document_text = "\n\n".join(
+                            [
+                                f"--- Page {i + 1} ---\n{text}"
+                                for i, text in enumerate(ocr_results)
+                                if text.strip()
+                            ]
+                        )
+                        logging.info(
+                            f"Extracted {len(document_text)} characters from OCR"
+                        )
                 else:
-                    logging.warning("OCR produced no results, continuing with normal processing")
+                    logging.warning(
+                        "OCR produced no results, continuing with normal processing"
+                    )
 
             # Determine if we should use OCR or direct PDF upload
             use_pdf_upload = self.no_ocr
-            if document_text is None:
-                document_text = None
             pdf_path_for_upload = None
 
             if not use_pdf_upload:
@@ -1389,7 +1417,7 @@ class ScanNamer:
 
             # Analyze with LLM
             prompt_config = self.prompts.get_prompt("document_naming")
-            if document_text:
+            if document_text:  # type: ignore
                 logging.info("Analyzing document using extracted text")
                 suggested_name, cost_info = self.llm_client.analyze_document(
                     document_text=document_text, prompt_config=prompt_config
