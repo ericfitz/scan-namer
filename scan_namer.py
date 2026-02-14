@@ -1166,12 +1166,22 @@ class ScanNamer:
         no_ocr: bool = False,
         max_tokens: Optional[int] = None,
         enable_ocr_embedding: bool = False,
+        download_dir: Optional[str] = None,
     ):
         self.config = ConfigManager(config_file)
         self.prompts = PromptManager()
         self.dry_run = dry_run
         self.no_ocr = no_ocr
         self.enable_ocr_embedding = enable_ocr_embedding
+
+        if download_dir:
+            self.download_dir = os.path.expanduser(download_dir)
+            if not os.path.isdir(self.download_dir):
+                logging.error(f"Download directory does not exist: {self.download_dir}")
+                sys.exit(1)
+        else:
+            self.download_dir = None
+
         self._setup_logging()
 
         # Initialize components
@@ -1456,6 +1466,9 @@ class ScanNamer:
                 print("DRY RUN - Would rename:")
                 print(f"  From: {original_name}")
                 print(f"  To:   {suggested_name}")
+                if self.download_dir:
+                    local_path = os.path.join(self.download_dir, suggested_name)
+                    print(f"  Download to: {local_path}")
                 return True
             else:
                 # Rename the file
@@ -1463,6 +1476,15 @@ class ScanNamer:
                     logging.info(
                         f"Successfully renamed: {original_name} -> {suggested_name}"
                     )
+                    # Download the renamed file if requested
+                    if self.download_dir:
+                        local_path = os.path.join(self.download_dir, suggested_name)
+                        if self.drive_manager.download_file(file_id, local_path):
+                            logging.info(f"Downloaded to: {local_path}")
+                        else:
+                            logging.warning(
+                                f"Failed to download {suggested_name} to {local_path}"
+                            )
                     return True
                 else:
                     logging.error(f"Failed to rename file: {original_name}")
@@ -1608,6 +1630,14 @@ def main() -> None:
         action="store_true",
         help="Enable OCR for image-only PDFs and embed text for searchability",
     )
+    parser.add_argument(
+        "--download",
+        nargs="?",
+        const="~/Downloads",
+        default=None,
+        metavar="DIR",
+        help="Download renamed files to a local directory (default: ~/Downloads)",
+    )
 
     args = parser.parse_args()
 
@@ -1682,6 +1712,7 @@ def main() -> None:
             no_ocr=args.no_ocr,
             max_tokens=args.tokens,
             enable_ocr_embedding=args.enable_ocr_embedding,
+            download_dir=args.download,
         )
         app.run()
     except KeyboardInterrupt:
