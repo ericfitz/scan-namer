@@ -23,6 +23,7 @@ using LLM analysis of document content.
 # ///
 
 import argparse
+import io
 import json
 import logging
 import os
@@ -617,6 +618,48 @@ class BaseLLMClient:
             return pdf_support.get(self.model, False)
         return False
 
+    def supports_vision(self) -> bool:
+        """Check if the current model supports image (vision) input."""
+        vision_support = self.config.get(
+            f"llm.providers.{self.provider}.vision_support", {}
+        )
+        if isinstance(vision_support, dict):
+            return vision_support.get(self.model, False)
+        return False
+
+    def _rasterize_pdf_to_pngs(self, pdf_path: str) -> List[bytes]:
+        """Render the first `pdf.extraction_pages` pages of `pdf_path` to PNG bytes.
+
+        Uses the pdf2image library (already a dependency for OCR). Returns an
+        empty list on error.
+        """
+        try:
+            extraction_pages = self.config.get("pdf.extraction_pages", 3)
+            if not isinstance(extraction_pages, int) or extraction_pages < 1:
+                extraction_pages = 3
+            dpi = self.config.get("ocr.dpi", 200)
+            if not isinstance(dpi, int) or dpi < 72:
+                dpi = 200
+            images = convert_from_path(
+                pdf_path,
+                dpi=dpi,
+                first_page=1,
+                last_page=extraction_pages,
+            )
+            png_pages: List[bytes] = []
+            for img in images:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG", optimize=True)
+                png_pages.append(buf.getvalue())
+            logging.info(
+                f"Rasterized {len(png_pages)} page(s) from {pdf_path} "
+                f"(dpi={dpi}, max_pages={extraction_pages})"
+            )
+            return png_pages
+        except Exception as e:
+            logging.error(f"Failed to rasterize PDF {pdf_path}: {e}")
+            return []
+
     def get_total_costs(self) -> Dict[str, int]:
         """Get total token costs for all requests."""
         if not self.token_costs:
@@ -807,6 +850,78 @@ class XAIClient(BaseLLMClient):
                 except requests.RequestException as e:
                     logging.warning(f"Could not delete xAI file {file_id}: {e}")
 
+    def _analyze_via_rasterized_pages(
+        self, pdf_path: str, prompt_config: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Rasterize PDF pages to PNG and analyze via chat/completions image_url."""
+        try:
+            png_pages = self._rasterize_pdf_to_pngs(pdf_path)
+            if not png_pages:
+                logging.error("No pages rasterized from PDF")
+                return None, {}
+
+            content: List[Dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "text": (
+                        prompt_config.get("user_prompt", "")
+                        + "\n\nThe document is provided as images of its pages."
+                    ),
+                }
+            ]
+            for png in png_pages:
+                b64 = base64.b64encode(png).decode("utf-8")
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": prompt_config.get("system_prompt", ""),
+                },
+                {"role": "user", "content": content},
+            ]
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+            }
+
+            endpoint = self.endpoint
+            if not isinstance(endpoint, str):
+                logging.error("Invalid API endpoint configuration")
+                return None, {}
+            response = requests.post(
+                endpoint, json=payload, headers=headers, timeout=120
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            usage = result.get("usage", {})
+            cost_info = {
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            }
+            self.token_costs.append(cost_info)
+
+            suggested_name = result["choices"][0]["message"]["content"].strip()
+            logging.info(
+                f"X.AI suggested filename (from rasterized PDF): {suggested_name}"
+            )
+            return suggested_name, cost_info
+        except Exception as e:
+            logging.error(f"X.AI rasterized-PDF analysis error: {e}")
+            return None, {}
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -823,9 +938,13 @@ class XAIClient(BaseLLMClient):
             if pdf_path and self.supports_pdf():
                 return self._analyze_pdf_via_files_api(pdf_path, prompt_config)
 
-            if pdf_path and not self.supports_pdf():
+            if pdf_path and self.supports_vision():
+                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
+
+            if pdf_path and not self.supports_pdf() and not self.supports_vision():
                 logging.error(
-                    f"Model {self.model} does not support PDF uploads. PDF support available in: grok-4-0709, grok-vision-beta"
+                    f"Model {self.model} does not support PDF or image input. "
+                    f"Use a vision-capable model or extract text first."
                 )
                 return None, {}
 
@@ -916,6 +1035,59 @@ class AnthropicClient(BaseLLMClient):
             )
             sys.exit(1)
 
+    def _analyze_via_rasterized_pages(
+        self, pdf_path: str, prompt_config: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Rasterize PDF pages to PNG and analyze via Anthropic image content blocks."""
+        try:
+            png_pages = self._rasterize_pdf_to_pngs(pdf_path)
+            if not png_pages:
+                logging.error("No pages rasterized from PDF")
+                return None, {}
+
+            content: List[Dict[str, Any]] = []
+            for png in png_pages:
+                b64 = base64.b64encode(png).decode("utf-8")
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": b64,
+                    },
+                })
+            content.append({
+                "type": "text",
+                "text": (
+                    prompt_config.get("user_prompt", "")
+                    + "\n\nThe document is provided as images of its pages."
+                ),
+            })
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                system=prompt_config.get("system_prompt", ""),
+                messages=[{"role": "user", "content": content}],
+            )
+
+            cost_info = {
+                "prompt_tokens": response.usage.input_tokens,
+                "completion_tokens": response.usage.output_tokens,
+                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+            }
+            self.token_costs.append(cost_info)
+
+            suggested_name = response.content[0].text.strip()
+            logging.info(
+                f"Claude suggested filename (from rasterized PDF): {suggested_name}"
+            )
+            return suggested_name, cost_info
+        except Exception as e:
+            logging.error(f"Anthropic rasterized-PDF analysis error: {e}")
+            return None, {}
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -955,10 +1127,13 @@ class AnthropicClient(BaseLLMClient):
                         ],
                     }
                 ]
+            elif pdf_path and self.supports_vision():
+                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
             else:
-                if pdf_path and not self.supports_pdf():
+                if pdf_path and not self.supports_pdf() and not self.supports_vision():
                     logging.error(
-                        f"Model {self.model} does not support PDF uploads. PDF support available in: claude-opus-4-20250514, claude-sonnet-4-20250514, claude-3-7-sonnet-20250219, claude-3-5-sonnet-20241022"
+                        f"Model {self.model} does not support PDF or image input. "
+                        f"Use a vision-capable model or extract text first."
                     )
                 else:
                     logging.error("Neither document text nor PDF path provided")
@@ -1023,6 +1198,60 @@ class OpenAIClient(BaseLLMClient):
             )
             sys.exit(1)
 
+    def _analyze_via_rasterized_pages(
+        self, pdf_path: str, prompt_config: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Rasterize PDF pages to PNG and analyze via OpenAI chat/completions image_url."""
+        try:
+            png_pages = self._rasterize_pdf_to_pngs(pdf_path)
+            if not png_pages:
+                logging.error("No pages rasterized from PDF")
+                return None, {}
+
+            content: List[Dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "text": (
+                        prompt_config.get("user_prompt", "")
+                        + "\n\nThe document is provided as images of its pages."
+                    ),
+                }
+            ]
+            for png in png_pages:
+                b64 = base64.b64encode(png).decode("utf-8")
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+
+            messages = [
+                {"role": "system", "content": prompt_config.get("system_prompt", "")},
+                {"role": "user", "content": content},
+            ]
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+
+            cost_info = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+            self.token_costs.append(cost_info)
+
+            suggested_name = response.choices[0].message.content.strip()
+            logging.info(
+                f"OpenAI suggested filename (from rasterized PDF): {suggested_name}"
+            )
+            return suggested_name, cost_info
+        except Exception as e:
+            logging.error(f"OpenAI rasterized-PDF analysis error: {e}")
+            return None, {}
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -1070,10 +1299,13 @@ class OpenAIClient(BaseLLMClient):
                         ],
                     },
                 ]
+            elif pdf_path and self.supports_vision():
+                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
             else:
-                if pdf_path and not self.supports_pdf():
+                if pdf_path and not self.supports_pdf() and not self.supports_vision():
                     logging.error(
-                        f"Model {self.model} does not support PDF uploads. PDF support available in: o3, gpt-4o, gpt-4o-mini"
+                        f"Model {self.model} does not support PDF or image input. "
+                        f"Use a vision-capable model or extract text first."
                     )
                 else:
                     logging.error("Neither document text nor PDF path provided")
@@ -1144,6 +1376,60 @@ class GoogleClient(BaseLLMClient):
             )
             sys.exit(1)
 
+    def _analyze_via_rasterized_pages(
+        self, pdf_path: str, prompt_config: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Rasterize PDF pages to PNG and analyze via Google Gen AI image parts."""
+        try:
+            from google.genai import types
+
+            png_pages = self._rasterize_pdf_to_pngs(pdf_path)
+            if not png_pages:
+                logging.error("No pages rasterized from PDF")
+                return None, {}
+
+            system_prompt = prompt_config.get("system_prompt", "")
+            user_prompt = prompt_config.get("user_prompt", "")
+            full_prompt = (
+                f"{system_prompt}\n\n{user_prompt}\n\n"
+                "The document is provided as images of its pages."
+            )
+
+            contents: List[Any] = [full_prompt]
+            for png in png_pages:
+                contents.append(
+                    types.Part.from_bytes(data=png, mime_type="image/png")
+                )
+
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config={
+                    "max_output_tokens": self.max_tokens,
+                    "temperature": self.temperature,
+                },
+            )
+
+            estimated_prompt_tokens = (
+                len(full_prompt) // 4 + len(png_pages) * 1500
+            )  # rough estimate: ~1500 tokens per image
+            estimated_completion_tokens = len(response.text) // 4
+            cost_info = {
+                "prompt_tokens": estimated_prompt_tokens,
+                "completion_tokens": estimated_completion_tokens,
+                "total_tokens": estimated_prompt_tokens + estimated_completion_tokens,
+            }
+            self.token_costs.append(cost_info)
+
+            suggested_name = response.text.strip()
+            logging.info(
+                f"Google AI suggested filename (from rasterized PDF): {suggested_name}"
+            )
+            return suggested_name, cost_info
+        except Exception as e:
+            logging.error(f"Google AI rasterized-PDF analysis error: {e}")
+            return None, {}
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -1172,10 +1458,13 @@ class GoogleClient(BaseLLMClient):
                 except Exception as upload_error:
                     logging.error(f"Failed to upload PDF: {upload_error}")
                     return None, {}
+            elif pdf_path and self.supports_vision():
+                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
             else:
-                if pdf_path and not self.supports_pdf():
+                if pdf_path and not self.supports_pdf() and not self.supports_vision():
                     logging.error(
-                        f"Model {self.model} does not support PDF uploads. PDF support available in: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite"
+                        f"Model {self.model} does not support PDF or image input. "
+                        f"Use a vision-capable model or extract text first."
                     )
                 else:
                     logging.error("Neither document text nor PDF path provided")
@@ -1321,12 +1610,16 @@ class ScanNamer:
         )
 
         # Validate --no-ocr flag with model capabilities
-        if self.no_ocr and not self.llm_client.supports_pdf():
+        if (
+            self.no_ocr
+            and not self.llm_client.supports_pdf()
+            and not self.llm_client.supports_vision()
+        ):
             logging.warning(
-                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which does not support PDF uploads."
+                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which does not support PDF or image input."
             )
             logging.warning(
-                "PDF fallback will not work. Consider using a vision-enabled model."
+                "PDF fallback will not work. Consider using a vision-capable model."
             )
             self._print_pdf_capable_models()
 
