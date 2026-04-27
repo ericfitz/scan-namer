@@ -8,7 +8,7 @@ be probed with a tiny PDF.
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "requests==2.31.0",
+#     "requests==2.33.1",
 #     "anthropic>=0.7.0",
 #     "openai>=1.0.0",
 #     "google-genai>=0.1.0",
