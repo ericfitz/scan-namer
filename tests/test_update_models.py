@@ -466,5 +466,159 @@ class XAIProviderTests(unittest.TestCase):
         self.assertEqual(self._make_client().name, "xai")
 
 
+class FakeProvider:
+    """Test double matching the per-provider client interface."""
+
+    name = "fake"
+
+    def __init__(self, models, probe_results=None, list_error=None):
+        self._models = models
+        self._probe_results = probe_results or {}
+        self._list_error = list_error
+
+    def list_models(self):
+        if self._list_error:
+            raise self._list_error
+        return list(self._models)
+
+    def probe_pdf(self, model):
+        return self._probe_results.get(
+            model,
+            update_models.ProbeResult(
+                succeeded=True, supports_pdf=False, error=None
+            ),
+        )
+
+
+class ProcessProviderTests(unittest.TestCase):
+    def test_uses_registry_when_known(self):
+        provider = FakeProvider(models=["claude-known", "claude-unknown"])
+        registry = {"claude-known": {"supports_pdf_input": True}}
+        block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": [],
+            "pdf_support": {},
+            "default_model": "",
+        }
+        with mock.patch.object(
+            update_models, "filter_chat_models",
+            side_effect=lambda p, ids: ids,
+        ):
+            updated, summary = update_models.process_provider(
+                provider_name="anthropic",
+                provider_block=block,
+                client=provider,
+                registry=registry,
+                enable_probing=False,
+            )
+        self.assertTrue(summary.success)
+        self.assertEqual(
+            sorted(updated["available_models"]),
+            ["claude-known", "claude-unknown"],
+        )
+        self.assertEqual(
+            updated["pdf_support"],
+            {"claude-known": True, "claude-unknown": False},
+        )
+
+    def test_probes_unknown_when_enabled(self):
+        provider = FakeProvider(
+            models=["claude-mystery"],
+            probe_results={
+                "claude-mystery": update_models.ProbeResult(
+                    succeeded=True, supports_pdf=True, error=None
+                ),
+            },
+        )
+        block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": [],
+            "pdf_support": {},
+        }
+        with mock.patch.object(
+            update_models, "filter_chat_models",
+            side_effect=lambda p, ids: ids,
+        ):
+            updated, summary = update_models.process_provider(
+                provider_name="anthropic",
+                provider_block=block,
+                client=provider,
+                registry={},
+                enable_probing=True,
+            )
+        self.assertTrue(summary.success)
+        self.assertEqual(updated["pdf_support"], {"claude-mystery": True})
+
+    def test_provider_failure_returns_unchanged_block_and_failure_summary(self):
+        provider = FakeProvider(
+            models=[],
+            list_error=update_models.requests.HTTPError("HTTP 401 unauthorized"),
+        )
+        original_block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": ["existing-model"],
+            "pdf_support": {"existing-model": True},
+            "default_model": "existing-model",
+        }
+        updated, summary = update_models.process_provider(
+            provider_name="anthropic",
+            provider_block=original_block,
+            client=provider,
+            registry={},
+            enable_probing=False,
+        )
+        self.assertFalse(summary.success)
+        self.assertEqual(updated, original_block)
+        self.assertIn("401", summary.error)
+
+    def test_default_model_preserved_when_still_present(self):
+        provider = FakeProvider(models=["a", "b", "c"])
+        block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": [],
+            "pdf_support": {},
+            "default_model": "b",
+        }
+        with mock.patch.object(
+            update_models, "filter_chat_models",
+            side_effect=lambda p, ids: ids,
+        ):
+            updated, _ = update_models.process_provider(
+                provider_name="anthropic",
+                provider_block=block,
+                client=provider,
+                registry={},
+                enable_probing=False,
+            )
+        self.assertEqual(updated["default_model"], "b")
+
+    def test_default_model_reset_when_dropped(self):
+        provider = FakeProvider(models=["x", "y"])
+        block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": [],
+            "pdf_support": {},
+            "default_model": "z-removed",
+        }
+        with mock.patch.object(
+            update_models, "filter_chat_models",
+            side_effect=lambda p, ids: ids,
+        ):
+            updated, _ = update_models.process_provider(
+                provider_name="anthropic",
+                provider_block=block,
+                client=provider,
+                registry={},
+                enable_probing=False,
+            )
+        # First model in sorted available_models becomes the new default
+        self.assertEqual(updated["default_model"], "x")
+
+
 if __name__ == "__main__":
     unittest.main()

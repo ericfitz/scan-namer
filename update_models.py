@@ -17,6 +17,7 @@ be probed with a tiny PDF.
 
 import argparse
 import base64
+import copy
 import json
 import logging
 import os
@@ -500,14 +501,167 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+PROVIDER_CLASSES = {
+    "lmstudio": LMStudioProvider,
+    "xai": XAIProvider,
+    "anthropic": AnthropicProvider,
+    "openai": OpenAIProvider,
+    "google": GoogleProvider,
+}
+
+
+@dataclass
+class ProviderSummary:
+    provider: str
+    success: bool
+    error: Optional[str] = None
+
+
+def build_client(provider_name: str, provider_block: Dict[str, Any]):
+    cls = PROVIDER_CLASSES.get(provider_name)
+    if cls is None:
+        raise ValueError(f"No client class for provider {provider_name!r}")
+    api_endpoint = provider_block.get("api_endpoint")
+    if not api_endpoint:
+        raise ValueError(
+            f"Provider {provider_name!r} has no api_endpoint in config"
+        )
+    api_key_env = provider_block.get("api_key_env")
+    api_key = resolve_api_key(api_key_env) if api_key_env else None
+    return cls(api_endpoint=api_endpoint, api_key=api_key)
+
+
+def process_provider(
+    provider_name: str,
+    provider_block: Dict[str, Any],
+    client,
+    registry: Dict[str, Any],
+    enable_probing: bool,
+) -> "tuple[Dict[str, Any], ProviderSummary]":
+    """Drive one provider end-to-end. Returns (new_block, summary).
+
+    On any failure to list models, returns the original block unchanged and a
+    failed summary; otherwise rebuilds available_models and pdf_support from
+    the provider's API response.
+    """
+    print(format_header(provider_name, provider_block.get("api_endpoint", "")))
+
+    try:
+        raw_ids = client.list_models()
+    except Exception as e:  # noqa: BLE001
+        msg = str(e) or e.__class__.__name__
+        print(f"\t{ASCII_X}  Error: {msg}")
+        summary = ProviderSummary(provider=provider_name, success=False, error=msg)
+        return provider_block, summary
+
+    filtered = sorted(set(filter_chat_models(provider_name, raw_ids)))
+
+    new_pdf_support: Dict[str, bool] = {}
+    kept_models: List[str] = []
+
+    for mid in filtered:
+        known = lookup_pdf_support(registry, mid, provider_name)
+        if known is not None:
+            print(format_model_line(mid, supports_pdf=known))
+            kept_models.append(mid)
+            new_pdf_support[mid] = known
+            continue
+
+        if enable_probing:
+            result = client.probe_pdf(mid)
+            if result.succeeded:
+                print(format_model_line(mid, supports_pdf=bool(result.supports_pdf)))
+                kept_models.append(mid)
+                new_pdf_support[mid] = bool(result.supports_pdf)
+            else:
+                print(format_model_line(mid, error=result.error))
+            continue
+
+        # Unknown and probing disabled: include with False
+        print(format_model_line(mid, supports_pdf=False))
+        kept_models.append(mid)
+        new_pdf_support[mid] = False
+
+    new_block = copy.deepcopy(provider_block)
+    new_block["available_models"] = kept_models
+    new_block["pdf_support"] = new_pdf_support
+
+    current_default = new_block.get("default_model")
+    if current_default not in kept_models:
+        new_block["default_model"] = kept_models[0] if kept_models else ""
+
+    return new_block, ProviderSummary(provider=provider_name, success=True)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logging.debug("Args: %s", args)
-    return 0
+
+    with open(CONFIG_PATH, "r") as f:
+        config = json.load(f)
+
+    providers = config.get("llm", {}).get("providers", {})
+    if args.provider:
+        if args.provider not in providers:
+            print(
+                f"{RED_X} {args.provider}  Error: provider not found in config.json"
+            )
+            return 2
+        provider_names = [args.provider]
+    else:
+        provider_names = list(providers.keys())
+
+    registry = fetch_litellm_registry()
+
+    summaries: List[ProviderSummary] = []
+    new_config = copy.deepcopy(config)
+
+    for provider_name in provider_names:
+        provider_block = providers[provider_name]
+        try:
+            client = build_client(provider_name, provider_block)
+        except Exception as e:  # noqa: BLE001
+            print(format_header(provider_name, provider_block.get("api_endpoint", "")))
+            msg = str(e) or e.__class__.__name__
+            summary = ProviderSummary(provider=provider_name, success=False, error=msg)
+            summaries.append(summary)
+            print(format_provider_summary(provider_name, success=False, error=msg))
+            print()
+            continue
+
+        new_block, summary = process_provider(
+            provider_name=provider_name,
+            provider_block=provider_block,
+            client=client,
+            registry=registry,
+            enable_probing=args.enable_probing,
+        )
+        summaries.append(summary)
+        if summary.success:
+            new_config["llm"]["providers"][provider_name] = new_block
+            print(format_provider_summary(provider_name, success=True))
+        else:
+            print(
+                format_provider_summary(
+                    provider_name, success=False, error=summary.error
+                )
+            )
+        print()
+
+    if args.dry_run:
+        logging.info("--dry-run: not writing config.json")
+    else:
+        any_success = any(s.success for s in summaries)
+        if any_success:
+            atomic_write_json(CONFIG_PATH, new_config)
+        else:
+            logging.warning("All providers failed; not writing config.json")
+
+    # Exit non-zero if any provider failed
+    return 0 if all(s.success for s in summaries) else 1
 
 
 if __name__ == "__main__":
