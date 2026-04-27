@@ -314,16 +314,35 @@ def format_provider_summary(
     return f"{RED_X} {provider}  Error retrieving list of models: {error}"
 
 
+# Substrings that, when found in a 4xx response body, mean "this model
+# does not accept PDF input." Returned by various providers when their
+# image_url / document content blocks reject application/pdf.
 _PDF_REJECTION_MARKERS = (
-    "does not support image",
-    "does not support file",
     "does not support pdf",
     "does not support document",
+    "does not support file",
     "does not support multimodal",
-    "image input is not supported",
     "file input is not supported",
     "unsupported content",
+    "must be a base64 encoded image",  # LMStudio: image_url field won't take PDF
+    "unsupported mime type",           # OpenAI: e.g. "unsupported MIME type 'application/pdf'"
+    "invalid base64-encoded image",    # xAI: when PDF sent via image_url
+    # When a vision-incapable model receives a PDF via image_url it says
+    # "image inputs not supported" — that equally means "no PDF support".
+    "does not support image",
+    "image input is not supported",
+    "image inputs are not supported",
+)
+
+# Substrings that, when found in a 4xx response body, mean "this model
+# does not accept image input."
+_IMAGE_REJECTION_MARKERS = (
+    "does not support image",
+    "image input is not supported",
+    "image inputs are not supported",  # xAI plural variant
     "vision is not supported",
+    "does not support multimodal",
+    "unsupported content",
 )
 
 
@@ -335,9 +354,22 @@ def derive_models_url(api_endpoint: str) -> str:
     return api_endpoint.rstrip("/") + "/models"
 
 
-def _is_capability_rejection(body_text: str) -> bool:
+def _is_capability_rejection(body_text: str, kind: str) -> bool:
+    """Return True if the provider's error body indicates the requested
+    capability (`pdf` or `image`) is not supported by the model.
+
+    The two kinds have separate marker lists because a phrase like
+    "Invalid base64-encoded image" means "PDF not accepted" only when we
+    sent a PDF — when we sent an actual PNG, it's a real error.
+    """
     lowered = (body_text or "").lower()
-    return any(m in lowered for m in _PDF_REJECTION_MARKERS)
+    if kind == "pdf":
+        markers = _PDF_REJECTION_MARKERS
+    elif kind == "image":
+        markers = _IMAGE_REJECTION_MARKERS
+    else:
+        return False
+    return any(m in lowered for m in markers)
 
 
 def _bearer_headers(api_key: Optional[str]) -> Dict[str, str]:
@@ -424,7 +456,7 @@ class OpenAICompatProvider:
             return ProbeResult(succeeded=True, supports=True, error=None)
         except requests.HTTPError as e:
             body = getattr(e.response, "text", "") if e.response is not None else ""
-            if _is_capability_rejection(body):
+            if _is_capability_rejection(body, kind):
                 return ProbeResult(succeeded=True, supports=False, error=None)
             status = e.response.status_code if e.response is not None else "?"
             return ProbeResult(
@@ -537,8 +569,10 @@ class AnthropicProvider:
             return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001 — SDK wraps a wide range of errors
             msg = str(e)
-            if _is_capability_rejection(msg) or (
-                "document" in msg.lower() and "support" in msg.lower()
+            if _is_capability_rejection(msg, kind) or (
+                kind == "pdf"
+                and "document" in msg.lower()
+                and "support" in msg.lower()
             ):
                 return ProbeResult(succeeded=True, supports=False, error=None)
             return ProbeResult(succeeded=False, supports=None, error=msg[:300])
@@ -596,7 +630,7 @@ class OpenAIProvider:
             return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001
             msg = str(e)
-            if _is_capability_rejection(msg):
+            if _is_capability_rejection(msg, kind):
                 return ProbeResult(succeeded=True, supports=False, error=None)
             return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 
@@ -654,7 +688,7 @@ class GoogleProvider:
             return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001
             msg = str(e)
-            if _is_capability_rejection(msg):
+            if _is_capability_rejection(msg, kind):
                 return ProbeResult(succeeded=True, supports=False, error=None)
             return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 

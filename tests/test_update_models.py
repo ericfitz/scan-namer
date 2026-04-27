@@ -656,11 +656,31 @@ class OpenAICompatProviderTests(unittest.TestCase):
         self.assertTrue(result.supports)
         self.assertIsNone(result.error)
 
-    def test_probe_pdf_returns_false_on_input_rejection(self):
+    def test_probe_image_returns_false_on_input_rejection(self):
+        # "does not support image inputs" is an image-rejection marker, not a PDF one.
+        # Use kind="image" so the marker is in scope.
         client = self._make_client()
         fake_response = mock.Mock(status_code=400)
         fake_response.text = (
             '{"error":{"message":"This model does not support image inputs"}}'
+        )
+        fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
+            "400 Bad Request", response=fake_response
+        )
+        with mock.patch(
+            "update_models.requests.post", return_value=fake_response
+        ):
+            result = client.probe("text-only-model", "image")
+        self.assertTrue(result.succeeded)
+        self.assertFalse(result.supports)
+        self.assertIsNone(result.error)
+
+    def test_probe_pdf_returns_false_on_pdf_rejection(self):
+        # Use a PDF-specific rejection body with kind="pdf".
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=400)
+        fake_response.text = (
+            '{"error":{"message":"This model does not support file input"}}'
         )
         fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
             "400 Bad Request", response=fake_response
@@ -981,6 +1001,62 @@ class LMStudioProviderTests(unittest.TestCase):
             result = client.list_models()
         self.assertEqual(result, ["fallback-model"])
         self.assertEqual(call_count["n"], 2)
+
+
+class CapabilityRejectionTests(unittest.TestCase):
+    def test_pdf_rejection_lmstudio_image_only(self):
+        self.assertTrue(
+            update_models._is_capability_rejection(
+                '{"error":"\'url\' field must be a base64 encoded image."}',
+                "pdf",
+            )
+        )
+
+    def test_pdf_rejection_openai_unsupported_mime(self):
+        self.assertTrue(
+            update_models._is_capability_rejection(
+                "Invalid image URL: ... unsupported MIME type 'application/pdf'.",
+                "pdf",
+            )
+        )
+
+    def test_pdf_rejection_xai_invalid_base64_image(self):
+        self.assertTrue(
+            update_models._is_capability_rejection(
+                '{"error":"Invalid request content: Invalid base64-encoded image."}',
+                "pdf",
+            )
+        )
+
+    def test_image_rejection_xai_plural(self):
+        # Plural form: "Image inputs are not supported by this model."
+        self.assertTrue(
+            update_models._is_capability_rejection(
+                '{"error":"Image inputs are not supported by this model."}',
+                "image",
+            )
+        )
+
+    def test_image_rejection_also_applies_to_pdf_kind(self):
+        # When probing PDF via image_url, a vision-incapable model returns
+        # "image inputs are not supported" — that equally means "no PDF support",
+        # so this phrase is intentionally in both marker lists.
+        self.assertTrue(
+            update_models._is_capability_rejection(
+                "Image inputs are not supported by this model.",
+                "pdf",
+            )
+        )
+
+    def test_invalid_b64_image_with_kind_image_is_NOT_a_rejection(self):
+        # When probing image, "Invalid base64-encoded image" is a real error
+        # (our PNG was bad), not a "doesn't support image" signal.
+        self.assertFalse(
+            update_models._is_capability_rejection(
+                '{"error":"Invalid base64-encoded image."}',
+                "image",
+            )
+        )
 
 
 if __name__ == "__main__":
