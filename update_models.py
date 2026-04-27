@@ -136,14 +136,6 @@ _OPENAI_NON_CHAT_PREFIXES = (
     "davinci-",
 )
 
-_OPENAI_NON_CHAT_SUBSTRINGS = (
-    "-audio",
-    "-realtime",
-    "-transcribe",
-    "-tts",
-    "-image",
-)
-
 _OPENAI_LEGACY_PREFIXES = (
     "gpt-3.5-",
 )
@@ -152,7 +144,10 @@ _OPENAI_LEGACY_EXACT = frozenset({"gpt-4", "gpt-4-0613"})
 
 _OPENAI_DATED_SNAPSHOT_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
-_LMSTUDIO_NON_CHAT_SUBSTRINGS = (
+# Global substring blocklist applied to ALL providers before any provider-specific
+# filtering. Drop names that indicate non-chat use cases: embeddings, rerankers,
+# image/audio generation, coding-specialized, robotics, etc.
+_NON_CHAT_NAME_SUBSTRINGS = (
     "embed",
     "rerank",
     "image",
@@ -162,24 +157,37 @@ _LMSTUDIO_NON_CHAT_SUBSTRINGS = (
     "tts",
     "bark",
     "musicgen",
+    "robotics",
+    "code",
+    "audio",
+    "realtime",
+    "transcribe",
 )
 
 
 def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
-    """Keep only chat-capable model ids per provider rules. LMStudio and unknown
-    providers are unfiltered.
+    """Keep only chat-capable model ids per provider rules.
+
+    A global substring blocklist (`_NON_CHAT_NAME_SUBSTRINGS`) drops names that
+    indicate non-chat use cases (embeddings, rerankers, image/audio generation,
+    coding-specialized, robotics, etc.) before any provider-specific logic.
     """
     def _norm(mid: str) -> str:
         # Some APIs return ids with a "models/" prefix (Google in particular)
         return mid[len("models/"):] if mid.startswith("models/") else mid
+
+    def _name_excluded(mid: str) -> bool:
+        base = _norm(mid).lower()
+        return any(s in base for s in _NON_CHAT_NAME_SUBSTRINGS)
+
+    # Apply the global name filter first.
+    model_ids = [mid for mid in model_ids if not _name_excluded(mid)]
 
     if provider == "openai":
         kept = []
         for mid in model_ids:
             base = _norm(mid)
             if any(base.startswith(p) for p in _OPENAI_NON_CHAT_PREFIXES):
-                continue
-            if any(s in base for s in _OPENAI_NON_CHAT_SUBSTRINGS):
                 continue
             if any(base.startswith(p) for p in _OPENAI_LEGACY_PREFIXES):
                 continue
@@ -205,21 +213,12 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
             base = _norm(mid)
             if not base.startswith("grok-"):
                 continue
-            if "-image" in base or "-video" in base:
+            if "-video" in base:
                 continue
             kept.append(mid)
         return kept
 
-    if provider == "lmstudio":
-        kept = []
-        for mid in model_ids:
-            base = _norm(mid).lower()
-            if any(s in base for s in _LMSTUDIO_NON_CHAT_SUBSTRINGS):
-                continue
-            kept.append(mid)
-        return kept
-
-    # anything unrecognized: pass through
+    # lmstudio + anything unrecognized: pass through (global filter already applied)
     return list(model_ids)
 
 

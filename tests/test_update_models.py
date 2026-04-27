@@ -214,7 +214,7 @@ class FilterChatModelsTests(unittest.TestCase):
     def test_lmstudio_drops_known_non_chat_name_patterns(self):
         ids = [
             "google/gemma-4-31b",
-            "qwen-coder",
+            "qwen-coder",               # drop (code) — now caught by global filter
             "anything-loaded-locally",
             "totally-custom",
             "text-embedding-nomic-embed-code",  # drop (embed)
@@ -233,11 +233,38 @@ class FilterChatModelsTests(unittest.TestCase):
             sorted(kept),
             sorted([
                 "google/gemma-4-31b",
-                "qwen-coder",
                 "anything-loaded-locally",
                 "totally-custom",
             ]),
         )
+
+    def test_global_name_filter_applies_to_all_providers(self):
+        # Each provider should drop names containing the global substrings,
+        # in addition to its own provider-specific rules.
+        cases = [
+            # (provider, input, expected_kept)
+            ("anthropic", ["claude-sonnet-4", "claude-image-preview"],
+             ["claude-sonnet-4"]),
+            ("google", [
+                "gemini-2.5-pro",
+                "gemini-3.1-flash-image-preview",
+                "gemini-robotics-er-1.5-preview",
+                "gemini-embedding-001",
+                "models/gemini-2.5-flash",
+            ], ["gemini-2.5-pro", "models/gemini-2.5-flash"]),
+            ("openai", ["gpt-4o", "gpt-5-codex", "gpt-5.1-codex-max"],
+             ["gpt-4o"]),
+            ("xai", ["grok-3", "grok-code-fast-1", "grok-imagine-image"],
+             ["grok-3"]),
+            ("lmstudio", ["google/gemma-4-31b", "qwen-coder", "jina-reranker"],
+             ["google/gemma-4-31b"]),
+        ]
+        for provider, inputs, expected in cases:
+            with self.subTest(provider=provider):
+                self.assertEqual(
+                    sorted(update_models.filter_chat_models(provider, inputs)),
+                    sorted(expected),
+                )
 
     def test_unknown_provider_keeps_everything(self):
         ids = ["a", "b"]
