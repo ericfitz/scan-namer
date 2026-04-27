@@ -162,6 +162,9 @@ _NON_CHAT_NAME_SUBSTRINGS = (
     "audio",
     "realtime",
     "transcribe",
+    "flash-live",
+    "multi-agent",
+    "search",
 )
 
 

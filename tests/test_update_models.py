@@ -298,17 +298,37 @@ class FilterChatModelsTests(unittest.TestCase):
             "gpt-4o-mini-transcribe",        # drop
             "gpt-4o-mini-tts",               # drop
             "gpt-image-1",                   # drop
-            "gpt-4o-mini-search-preview",    # keep (legitimate chat with search)
+            "gpt-4o-mini-search-preview",    # drop (global filter catches search)
         ]
         kept = update_models.filter_chat_models("openai", ids)
         self.assertIn("gpt-4o", kept)
-        self.assertIn("gpt-4o-mini-search-preview", kept)
         self.assertNotIn("gpt-4o-audio-preview", kept)
         self.assertNotIn("gpt-4o-mini-audio-preview", kept)
         self.assertNotIn("gpt-4o-mini-realtime-preview", kept)
         self.assertNotIn("gpt-4o-mini-transcribe", kept)
         self.assertNotIn("gpt-4o-mini-tts", kept)
         self.assertNotIn("gpt-image-1", kept)
+        self.assertNotIn("gpt-4o-mini-search-preview", kept)
+
+    def test_global_filter_drops_flash_live_multi_agent_search(self):
+        cases = [
+            ("google", ["gemini-2.5-pro", "gemini-3.1-flash-live-preview"],
+             ["gemini-2.5-pro"]),
+            ("xai", ["grok-3", "grok-4.20-multi-agent-0309"],
+             ["grok-3"]),
+            ("openai", [
+                "gpt-4o",
+                "gpt-4o-search-preview",
+                "gpt-4o-mini-search-preview",
+                "gpt-5-search-api",
+             ], ["gpt-4o"]),
+        ]
+        for provider, inputs, expected in cases:
+            with self.subTest(provider=provider):
+                self.assertEqual(
+                    sorted(update_models.filter_chat_models(provider, inputs)),
+                    sorted(expected),
+                )
 
     def test_openai_drops_dated_snapshots_and_legacy(self):
         ids = [
