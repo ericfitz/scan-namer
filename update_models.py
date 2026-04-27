@@ -451,8 +451,11 @@ class GoogleProvider:
         ids: List[str] = []
         for entry in client.models.list():
             mid = getattr(entry, "name", None) or getattr(entry, "id", None)
-            if mid:
-                ids.append(mid)
+            if not mid:
+                continue
+            if mid.startswith("models/"):
+                mid = mid[len("models/"):]
+            ids.append(mid)
         return ids
 
     def probe_pdf(self, model: str) -> ProbeResult:
