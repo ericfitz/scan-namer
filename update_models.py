@@ -137,7 +137,7 @@ _OPENAI_NON_CHAT_PREFIXES = (
 )
 
 _OPENAI_NON_CHAT_SUBSTRINGS = (
-    "-audio-preview",
+    "-audio",
     "-realtime",
     "-transcribe",
     "-tts",
