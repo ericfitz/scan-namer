@@ -148,6 +148,24 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
     return list(model_ids)
 
 
+def atomic_write_json(path: str, data: Any) -> None:
+    """Write `data` as pretty JSON to `path`, atomically.
+
+    Stages to `path + ".tmp"`, then replaces the original. If serialization
+    fails, the staging file is removed and the original is left untouched.
+    """
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+    except (TypeError, ValueError):
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+    os.replace(tmp_path, path)
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"

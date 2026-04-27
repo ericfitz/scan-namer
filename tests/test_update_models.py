@@ -231,5 +231,43 @@ class FilterChatModelsTests(unittest.TestCase):
             self.assertEqual(update_models.filter_chat_models(provider, []), [])
 
 
+class AtomicWriteJsonTests(unittest.TestCase):
+    def test_writes_pretty_json(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "out.json")
+            update_models.atomic_write_json(path, {"a": 1, "b": [2, 3]})
+            with open(path) as f:
+                content = f.read()
+        self.assertIn('"a": 1', content)
+        self.assertTrue(content.endswith("\n"))
+
+    def test_no_partial_file_on_serialization_error(self):
+        class Unserializable:
+            pass
+
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "out.json")
+            # Pre-existing content should survive a failed write
+            with open(path, "w") as f:
+                f.write('{"original": true}\n')
+            with self.assertRaises(TypeError):
+                update_models.atomic_write_json(path, {"bad": Unserializable()})
+            with open(path) as f:
+                self.assertEqual(f.read(), '{"original": true}\n')
+            # The .tmp staging file should not be left behind
+            self.assertFalse(os.path.exists(path + ".tmp"))
+
+    def test_overwrites_existing_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "out.json")
+            with open(path, "w") as f:
+                f.write('{"old": true}\n')
+            update_models.atomic_write_json(path, {"new": True})
+            with open(path) as f:
+                content = f.read()
+        self.assertIn('"new": true', content)
+        self.assertNotIn("old", content)
+
+
 if __name__ == "__main__":
     unittest.main()
