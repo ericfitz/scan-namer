@@ -16,7 +16,11 @@
           "google/gemma-4-31b": false,
           "qwen/qwen3.6-35b-a3b": false
         },
-        "default_model": "google/gemma-4-31b"
+        "default_model": "google/gemma-4-31b",
+        "vision_support": {
+          "google/gemma-4-31b": false,
+          "qwen/qwen3.6-35b-a3b": false
+        }
       },
       "anthropic": {
         "api_endpoint": "https://api.anthropic.com/v1",
@@ -43,7 +47,18 @@
           "claude-sonnet-4-5-20250929": true,
           "claude-sonnet-4-6": true
         },
-        "default_model": "claude-sonnet-4-6"
+        "default_model": "claude-sonnet-4-6",
+        "vision_support": {
+          "claude-haiku-4-5-20251001": true,
+          "claude-opus-4-1-20250805": true,
+          "claude-opus-4-20250514": true,
+          "claude-opus-4-5-20251101": true,
+          "claude-opus-4-6": true,
+          "claude-opus-4-7": true,
+          "claude-sonnet-4-20250514": true,
+          "claude-sonnet-4-5-20250929": true,
+          "claude-sonnet-4-6": true
+        }
       },
       "google": {
         "api_endpoint": "https://generativelanguage.googleapis.com",
@@ -74,7 +89,19 @@
           "gemini-flash-lite-latest": true,
           "gemini-pro-latest": true
         },
-        "default_model": "gemini-flash-latest"
+        "default_model": "gemini-flash-latest",
+        "vision_support": {
+          "gemini-2.5-flash": true,
+          "gemini-2.5-flash-lite": true,
+          "gemini-2.5-pro": true,
+          "gemini-3-flash-preview": true,
+          "gemini-3-pro-preview": true,
+          "gemini-3.1-flash-lite-preview": true,
+          "gemini-3.1-pro-preview": true,
+          "gemini-flash-latest": true,
+          "gemini-flash-lite-latest": true,
+          "gemini-pro-latest": true
+        }
       },
       "openai": {
         "api_endpoint": "https://api.openai.com/v1",
@@ -141,7 +168,38 @@
           "o3-pro": true,
           "o4-mini": true
         },
-        "default_model": "gpt-5.5"
+        "default_model": "gpt-5.5",
+        "vision_support": {
+          "gpt-4-turbo": true,
+          "gpt-4.1": true,
+          "gpt-4.1-mini": true,
+          "gpt-4.1-nano": true,
+          "gpt-4o": true,
+          "gpt-4o-mini": true,
+          "gpt-5": true,
+          "gpt-5-chat-latest": true,
+          "gpt-5-mini": true,
+          "gpt-5-nano": true,
+          "gpt-5-pro": true,
+          "gpt-5.1": true,
+          "gpt-5.1-chat-latest": true,
+          "gpt-5.2": true,
+          "gpt-5.2-chat-latest": true,
+          "gpt-5.2-pro": true,
+          "gpt-5.3-chat-latest": true,
+          "gpt-5.4": true,
+          "gpt-5.4-mini": true,
+          "gpt-5.4-nano": true,
+          "gpt-5.4-pro": true,
+          "gpt-5.5": true,
+          "gpt-5.5-pro": true,
+          "o1": true,
+          "o1-pro": true,
+          "o3": true,
+          "o3-mini": false,
+          "o3-pro": true,
+          "o4-mini": true
+        }
       },
       "xai": {
         "api_endpoint": "https://api.x.ai/v1/chat/completions",
@@ -168,7 +226,18 @@
           "grok-4.20-0309-non-reasoning": false,
           "grok-4.20-0309-reasoning": false
         },
-        "default_model": "grok-3"
+        "default_model": "grok-3",
+        "vision_support": {
+          "grok-3": false,
+          "grok-3-mini": false,
+          "grok-4-0709": false,
+          "grok-4-1-fast-non-reasoning": true,
+          "grok-4-1-fast-reasoning": true,
+          "grok-4-fast-non-reasoning": false,
+          "grok-4-fast-reasoning": false,
+          "grok-4.20-0309-non-reasoning": false,
+          "grok-4.20-0309-reasoning": true
+        }
       }
     }
   },
