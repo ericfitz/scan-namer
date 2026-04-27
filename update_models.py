@@ -36,6 +36,40 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
 
 
+_EXPORT_LINE_RE = re.compile(
+    r"""^\s*(?:export\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>.*?)\s*$"""
+)
+
+
+def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional[str]:
+    """Resolve an API key by trying a same-named file in project_root, then the
+    environment variable, then returning None.
+
+    Files are expected to be in shell-sourceable form: `export NAME=value` or
+    `NAME=value`. Surrounding single or double quotes are stripped.
+    """
+    file_path = os.path.join(project_root, env_name)
+    if os.path.isfile(file_path):
+        try:
+            with open(file_path, "r") as f:
+                for line in f:
+                    m = _EXPORT_LINE_RE.match(line)
+                    if not m or m.group("name") != env_name:
+                        continue
+                    value = m.group("value")
+                    if (
+                        len(value) >= 2
+                        and value[0] == value[-1]
+                        and value[0] in ("'", '"')
+                    ):
+                        value = value[1:-1]
+                    return value
+        except OSError as e:
+            logging.warning("Could not read %s: %s", file_path, e)
+
+    return os.environ.get(env_name)
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
