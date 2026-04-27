@@ -108,6 +108,14 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
             result = update_models.fetch_litellm_registry()
         self.assertEqual(result, {})
 
+    def test_returns_empty_dict_on_non_dict_response(self):
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = [1, 2, 3]  # array, not dict
+        fake_response.raise_for_status.return_value = None
+        with mock.patch("update_models.requests.get", return_value=fake_response):
+            result = update_models.fetch_litellm_registry()
+        self.assertEqual(result, {})
+
 
 class LookupPdfSupportTests(unittest.TestCase):
     REGISTRY = {
