@@ -17,7 +17,7 @@
         "default_model": "google/gemma-4-31b"
       },
       "anthropic": {
-        "api_endpoint": "https://api.anthropic.com",
+        "api_endpoint": "https://api.anthropic.com/v1",
         "api_key_env": "ANTHROPIC_API_KEY",
         "available_models": [
           "claude-opus-4-1-20250805",
