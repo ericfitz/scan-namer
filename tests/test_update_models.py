@@ -261,7 +261,8 @@ class FilterChatModelsTests(unittest.TestCase):
             "not-grok",
         ]
         kept = update_models.filter_chat_models("xai", ids)
-        self.assertEqual(sorted(kept), ["grok-3", "grok-4-0709"])
+        # grok-3 is deprecated; grok-imagine-* filtered by global name filter
+        self.assertEqual(sorted(kept), ["grok-4-0709"])
 
     def test_lmstudio_drops_known_non_chat_name_patterns(self):
         ids = [
@@ -306,8 +307,8 @@ class FilterChatModelsTests(unittest.TestCase):
             ], ["gemini-2.5-pro", "models/gemini-2.5-flash"]),
             ("openai", ["gpt-4o", "gpt-5-codex", "gpt-5.1-codex-max"],
              ["gpt-4o"]),
-            ("xai", ["grok-3", "grok-code-fast-1", "grok-imagine-image"],
-             ["grok-3"]),
+            ("xai", ["grok-4-0709", "grok-code-fast-1", "grok-imagine-image"],
+             ["grok-4-0709"]),
             ("lmstudio", ["google/gemma-4-31b", "qwen-coder", "jina-reranker"],
              ["google/gemma-4-31b"]),
         ]
@@ -324,13 +325,13 @@ class FilterChatModelsTests(unittest.TestCase):
         self.assertEqual(sorted(kept), sorted(ids))
 
     def test_openai_excludes_o_prefix_without_digit(self):
-        # The "o" matcher must require a digit follow (o1, o3, o4) — bare "o"
-        # words like a hypothetical "octopus-3" should NOT be kept.
+        # The "o" matcher must require a digit follow (o3, o4, etc.) — bare "o"
+        # words like a hypothetical "octopus-3" should NOT be kept. o1* are deprecated.
         ids = ["o1-mini", "o3", "octopus-3", "omni-foo", "gpt-4o"]
         kept = update_models.filter_chat_models("openai", ids)
-        # o1-mini and o3 keep (digit after o); gpt-4o keeps (gpt- prefix).
-        # octopus-3 and omni-foo must be dropped.
-        self.assertIn("o1-mini", kept)
+        # o3 keeps (digit after o, not deprecated); gpt-4o keeps (gpt- prefix).
+        # o1-mini drops (o1 deprecated); octopus-3 and omni-foo must be dropped.
+        self.assertNotIn("o1-mini", kept)
         self.assertIn("o3", kept)
         self.assertIn("gpt-4o", kept)
         self.assertNotIn("octopus-3", kept)
@@ -366,8 +367,8 @@ class FilterChatModelsTests(unittest.TestCase):
         cases = [
             ("google", ["gemini-2.5-pro", "gemini-3.1-flash-live-preview"],
              ["gemini-2.5-pro"]),
-            ("xai", ["grok-3", "grok-4.20-multi-agent-0309"],
-             ["grok-3"]),
+            ("xai", ["grok-4-0709", "grok-4.20-multi-agent-0309"],
+             ["grok-4-0709"]),
             ("openai", [
                 "gpt-4o",
                 "gpt-4o-search-preview",
@@ -401,8 +402,9 @@ class FilterChatModelsTests(unittest.TestCase):
             "gpt-5",                             # keep
             "gpt-5-2025-08-07",                  # drop (dated)
             "gpt-5-chat-latest",                 # keep (no date suffix)
-            "o1",                                # keep
-            "o1-2024-12-17",                     # drop (dated)
+            "o1",                                # drop (deprecated)
+            "o1-2024-12-17",                     # drop (deprecated)
+            "o3",                                # keep (not deprecated)
             "gpt-3.5-turbo",                     # drop (legacy prefix)
             "gpt-3.5-turbo-instruct",            # drop (legacy prefix)
             "gpt-4",                             # drop (legacy exact)
@@ -418,7 +420,7 @@ class FilterChatModelsTests(unittest.TestCase):
                 "gpt-4.1",
                 "gpt-5",
                 "gpt-5-chat-latest",
-                "o1",
+                "o3",
                 "gpt-4-turbo",
             ]),
         )
@@ -436,6 +438,34 @@ class FilterChatModelsTests(unittest.TestCase):
         self.assertEqual(
             sorted(kept),
             sorted(["gemini-2.5-pro", "models/gemini-2.5-flash"]),
+        )
+
+    def test_openai_drops_o1_deprecated(self):
+        ids = [
+            "gpt-4o",
+            "o1",
+            "o1-pro",
+            "o3",
+            "o3-mini",
+            "o4-mini",
+        ]
+        kept = update_models.filter_chat_models("openai", ids)
+        self.assertEqual(
+            sorted(kept),
+            sorted(["gpt-4o", "o3", "o3-mini", "o4-mini"]),
+        )
+
+    def test_xai_drops_grok_3_deprecated(self):
+        ids = [
+            "grok-3",
+            "grok-3-mini",
+            "grok-4-0709",
+            "grok-4-fast-non-reasoning",
+        ]
+        kept = update_models.filter_chat_models("xai", ids)
+        self.assertEqual(
+            sorted(kept),
+            sorted(["grok-4-0709", "grok-4-fast-non-reasoning"]),
         )
 
 

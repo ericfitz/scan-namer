@@ -173,6 +173,14 @@ _GOOGLE_DEPRECATED_PREFIXES = (
     "gemini-2.0-",
 )
 
+_OPENAI_DEPRECATED_PREFIXES = (
+    "o1",
+)
+
+_XAI_DEPRECATED_PREFIXES = (
+    "grok-3",
+)
+
 # Global substring blocklist applied to ALL providers before any provider-specific
 # filtering. Drop names that indicate non-chat use cases: embeddings, rerankers,
 # image/audio generation, coding-specialized, robotics, etc.
@@ -227,6 +235,8 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
                 continue
             if base in _OPENAI_LEGACY_EXACT:
                 continue
+            if any(base.startswith(p) for p in _OPENAI_DEPRECATED_PREFIXES):
+                continue
             if _OPENAI_DATED_SNAPSHOT_RE.search(base):
                 continue
             if base.startswith("gpt-") or (
@@ -254,6 +264,8 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
         for mid in model_ids:
             base = _norm(mid)
             if not base.startswith("grok-"):
+                continue
+            if any(base.startswith(p) for p in _XAI_DEPRECATED_PREFIXES):
                 continue
             if "-video" in base:
                 continue
