@@ -48,10 +48,13 @@ MINIMAL_PDF_B64 = (
     "8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxNTYKJSVFT0YK"
 )
 
-# 1x1 transparent PNG, valid magic header, ~67 bytes raw.
+# 32x32 transparent PNG, ~83 bytes raw. Sized to clear xAI's
+# minimum-pixels validation (xAI rejects inputs below 512 pixels total
+# and below 8x8 dimensions). Other providers accept smaller images, but
+# this single payload works everywhere.
 MINIMAL_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg"
-    "AAIAAAUAAen63NgAAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAGklEQVR42u3B"
+    "AQEAAACCIP+vbkhAAQAAAO8GECAAAcm1w7EAAAAASUVORK5CYII="
 )
 
 

@@ -553,6 +553,17 @@ class MinimalPngTests(unittest.TestCase):
         raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
         self.assertLess(len(raw), 256)
 
+    def test_dimensions_meet_xai_minimum(self):
+        # xAI rejects images below 8x8 dimensions or below 512 total pixels.
+        # IHDR chunk starts at byte 8: 4-byte length, 4-byte "IHDR" type,
+        # then 4-byte big-endian width and 4-byte big-endian height.
+        import struct
+        raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
+        width, height = struct.unpack(">II", raw[16:24])
+        self.assertGreaterEqual(width, 8)
+        self.assertGreaterEqual(height, 8)
+        self.assertGreaterEqual(width * height, 512)
+
 
 class ProbeResultTests(unittest.TestCase):
     def test_success_with_pdf(self):
