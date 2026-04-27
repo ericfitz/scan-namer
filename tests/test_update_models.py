@@ -269,5 +269,46 @@ class AtomicWriteJsonTests(unittest.TestCase):
         self.assertNotIn("old", content)
 
 
+class OutputFormattingTests(unittest.TestCase):
+    def test_header(self):
+        line = update_models.format_header("anthropic", "https://api.anthropic.com")
+        self.assertEqual(
+            line, "Probing provider anthropic at endpoint https://api.anthropic.com"
+        )
+
+    def test_model_line_success_true(self):
+        line = update_models.format_model_line("claude-sonnet-4", supports_pdf=True)
+        self.assertEqual(
+            line, "\t✓  Model: claude-sonnet-4  [ Supports pdf: True ]"
+        )
+
+    def test_model_line_success_false(self):
+        line = update_models.format_model_line("claude-haiku-3-5", supports_pdf=False)
+        self.assertEqual(
+            line, "\t✓  Model: claude-haiku-3-5  [ Supports pdf: False ]"
+        )
+
+    def test_model_line_error(self):
+        line = update_models.format_model_line(
+            "claude-experimental", error="HTTP 404 model not found"
+        )
+        self.assertEqual(
+            line,
+            "\t✗  Model: claude-experimental  [ Error: HTTP 404 model not found ]",
+        )
+
+    def test_provider_summary_success(self):
+        line = update_models.format_provider_summary("anthropic", success=True)
+        self.assertEqual(line, "✅ anthropic  Model list updated")
+
+    def test_provider_summary_failure(self):
+        line = update_models.format_provider_summary(
+            "xai", success=False, error="HTTP 401 unauthorized"
+        )
+        self.assertEqual(
+            line, "❌ xai  Error retrieving list of models: HTTP 401 unauthorized"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

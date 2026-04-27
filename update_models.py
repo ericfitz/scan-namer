@@ -166,6 +166,34 @@ def atomic_write_json(path: str, data: Any) -> None:
     os.replace(tmp_path, path)
 
 
+GREEN_CHECK = "✅"
+RED_X = "❌"
+ASCII_CHECK = "✓"
+ASCII_X = "✗"
+
+
+def format_header(provider: str, endpoint: str) -> str:
+    return f"Probing provider {provider} at endpoint {endpoint}"
+
+
+def format_model_line(
+    model: str,
+    supports_pdf: Optional[bool] = None,
+    error: Optional[str] = None,
+) -> str:
+    if error is not None:
+        return f"\t{ASCII_X}  Model: {model}  [ Error: {error} ]"
+    return f"\t{ASCII_CHECK}  Model: {model}  [ Supports pdf: {supports_pdf} ]"
+
+
+def format_provider_summary(
+    provider: str, success: bool, error: Optional[str] = None
+) -> str:
+    if success:
+        return f"{GREEN_CHECK} {provider}  Model list updated"
+    return f"{RED_X} {provider}  Error retrieving list of models: {error}"
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
