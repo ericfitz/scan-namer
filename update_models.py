@@ -373,6 +373,62 @@ class AnthropicProvider:
             return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
 
 
+class OpenAIProvider:
+    name = "openai"
+
+    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+
+    def _client(self):
+        import openai
+
+        kwargs = {}
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
+        return openai.OpenAI(**kwargs)
+
+    def list_models(self) -> List[str]:
+        client = self._client()
+        ids: List[str] = []
+        for entry in client.models.list():
+            mid = getattr(entry, "id", None)
+            if mid:
+                ids.append(mid)
+        return ids
+
+    def probe_pdf(self, model: str) -> ProbeResult:
+        try:
+            client = self._client()
+            client.chat.completions.create(
+                model=model,
+                max_tokens=1,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "."},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:application/pdf;base64,"
+                                        f"{MINIMAL_PDF_B64}"
+                                    )
+                                },
+                            },
+                        ],
+                    }
+                ],
+            )
+            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if _is_pdf_rejection(msg):
+                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
+            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
