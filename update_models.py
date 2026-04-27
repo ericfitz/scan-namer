@@ -429,6 +429,53 @@ class OpenAIProvider:
             return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
 
 
+class GoogleProvider:
+    name = "google"
+
+    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+
+    def _client(self):
+        from google import genai
+
+        # API-key mode. If api_key is None, the SDK reads GEMINI_API_KEY /
+        # GOOGLE_API_KEY from the environment.
+        if self.api_key:
+            return genai.Client(api_key=self.api_key)
+        return genai.Client()
+
+    def list_models(self) -> List[str]:
+        client = self._client()
+        ids: List[str] = []
+        for entry in client.models.list():
+            mid = getattr(entry, "name", None) or getattr(entry, "id", None)
+            if mid:
+                ids.append(mid)
+        return ids
+
+    def probe_pdf(self, model: str) -> ProbeResult:
+        try:
+            from google.genai import types
+
+            client = self._client()
+            pdf_bytes = base64.b64decode(MINIMAL_PDF_B64)
+            client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
+                    ".",
+                ],
+                config={"max_output_tokens": 1},
+            )
+            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if _is_pdf_rejection(msg):
+                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
+            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
