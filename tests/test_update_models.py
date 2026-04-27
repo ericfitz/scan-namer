@@ -183,7 +183,7 @@ class FilterChatModelsTests(unittest.TestCase):
         kept = update_models.filter_chat_models("openai", ids)
         self.assertEqual(
             sorted(kept),
-            sorted(["gpt-5-2025-08-07", "gpt-4.1-2025-04-14", "o3-mini"]),
+            sorted(["o3-mini"]),
         )
 
     def test_anthropic_keeps_only_claude(self):
@@ -282,6 +282,38 @@ class FilterChatModelsTests(unittest.TestCase):
         self.assertNotIn("gpt-4o-mini-transcribe", kept)
         self.assertNotIn("gpt-4o-mini-tts", kept)
         self.assertNotIn("gpt-image-1", kept)
+
+    def test_openai_drops_dated_snapshots_and_legacy(self):
+        ids = [
+            "gpt-4o",                            # keep (alias)
+            "gpt-4o-2024-08-06",                 # drop (dated)
+            "gpt-4o-2024-11-20",                 # drop (dated)
+            "gpt-4.1",                           # keep
+            "gpt-4.1-2025-04-14",                # drop (dated)
+            "gpt-5",                             # keep
+            "gpt-5-2025-08-07",                  # drop (dated)
+            "gpt-5-chat-latest",                 # keep (no date suffix)
+            "o1",                                # keep
+            "o1-2024-12-17",                     # drop (dated)
+            "gpt-3.5-turbo",                     # drop (legacy prefix)
+            "gpt-3.5-turbo-instruct",            # drop (legacy prefix)
+            "gpt-4",                             # drop (legacy exact)
+            "gpt-4-0613",                        # drop (legacy exact)
+            "gpt-4-turbo",                       # keep
+            "gpt-4-turbo-2024-04-09",            # drop (dated)
+        ]
+        kept = update_models.filter_chat_models("openai", ids)
+        self.assertEqual(
+            sorted(kept),
+            sorted([
+                "gpt-4o",
+                "gpt-4.1",
+                "gpt-5",
+                "gpt-5-chat-latest",
+                "o1",
+                "gpt-4-turbo",
+            ]),
+        )
 
 
 class AtomicWriteJsonTests(unittest.TestCase):

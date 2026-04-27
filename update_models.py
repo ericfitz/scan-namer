@@ -144,6 +144,14 @@ _OPENAI_NON_CHAT_SUBSTRINGS = (
     "-image",
 )
 
+_OPENAI_LEGACY_PREFIXES = (
+    "gpt-3.5-",
+)
+
+_OPENAI_LEGACY_EXACT = frozenset({"gpt-4", "gpt-4-0613"})
+
+_OPENAI_DATED_SNAPSHOT_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+
 _LMSTUDIO_NON_CHAT_SUBSTRINGS = (
     "embed",
     "rerank",
@@ -172,6 +180,12 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
             if any(base.startswith(p) for p in _OPENAI_NON_CHAT_PREFIXES):
                 continue
             if any(s in base for s in _OPENAI_NON_CHAT_SUBSTRINGS):
+                continue
+            if any(base.startswith(p) for p in _OPENAI_LEGACY_PREFIXES):
+                continue
+            if base in _OPENAI_LEGACY_EXACT:
+                continue
+            if _OPENAI_DATED_SNAPSHOT_RE.search(base):
                 continue
             if base.startswith("gpt-") or (
                 len(base) >= 2 and base[0] == "o" and base[1].isdigit()
