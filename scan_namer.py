@@ -1342,6 +1342,60 @@ class OpenAIClient(BaseLLMClient):
             return None, {}
 
 
+class LMStudioClient(OpenAIClient):
+    """LM Studio client.
+
+    LM Studio exposes an OpenAI-compatible /v1/chat/completions endpoint at
+    a user-configurable local URL. The `openai` Python SDK is reused with a
+    custom `base_url`. No API key is required by LM Studio itself; if one is
+    not configured we pass a placeholder string to satisfy the SDK.
+    """
+
+    def _get_api_key(self) -> str:
+        """Return the configured API key, or a placeholder if unset.
+
+        LM Studio does not authenticate by default. If the user has placed
+        the local server behind an auth proxy, they can set the env var
+        named by `llm.providers.lmstudio.api_key_env` (default
+        LMSTUDIO_API_KEY); otherwise we return a non-empty placeholder so
+        the openai SDK does not refuse to construct.
+        """
+        api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
+        if isinstance(api_key_env, str):
+            api_key = os.getenv(api_key_env)
+            if api_key:
+                return api_key
+        return "lm-studio"
+
+    def _setup_client(self) -> None:
+        """Set up the openai SDK pointed at the local LM Studio endpoint."""
+        try:
+            import openai
+        except ImportError:
+            logging.error(
+                "OpenAI library not installed. Please install with: pip install openai"
+            )
+            sys.exit(1)
+
+        endpoint = self.config.get(f"llm.providers.{self.provider}.api_endpoint")
+        if not isinstance(endpoint, str) or not endpoint:
+            logging.error(
+                f"Invalid or missing api_endpoint for provider {self.provider}"
+            )
+            sys.exit(1)
+
+        # The openai SDK expects the base URL (e.g. http://localhost:1234/v1),
+        # not the full chat-completions URL. Strip the suffix if present.
+        base_url = endpoint
+        suffix = "/chat/completions"
+        if base_url.endswith(suffix):
+            base_url = base_url[: -len(suffix)]
+        base_url = base_url.rstrip("/")
+
+        self.client = openai.OpenAI(api_key=self.api_key, base_url=base_url)
+        logging.info(f"LM Studio client initialized: base_url={base_url}")
+
+
 class GoogleClient(BaseLLMClient):
     """Google Vertex AI API client."""
 
