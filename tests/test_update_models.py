@@ -200,7 +200,14 @@ class FilterChatModelsTests(unittest.TestCase):
         self.assertNotIn("embedding-001", kept)
 
     def test_xai_keeps_only_grok(self):
-        ids = ["grok-4-0709", "grok-3", "not-grok"]
+        ids = [
+            "grok-4-0709",
+            "grok-3",
+            "grok-imagine-image",
+            "grok-imagine-image-pro",
+            "grok-imagine-video",
+            "not-grok",
+        ]
         kept = update_models.filter_chat_models("xai", ids)
         self.assertEqual(sorted(kept), ["grok-3", "grok-4-0709"])
 
@@ -377,9 +384,9 @@ class EndpointRootTests(unittest.TestCase):
         )
 
 
-class LMStudioProviderTests(unittest.TestCase):
+class OpenAICompatProviderTests(unittest.TestCase):
     def _make_client(self):
-        return update_models.LMStudioProvider(
+        return update_models.OpenAICompatProvider(
             api_endpoint="http://localhost:1234/v1/chat/completions",
             api_key=None,
         )
@@ -640,6 +647,65 @@ class ProcessProviderTests(unittest.TestCase):
             )
         # First model in sorted available_models becomes the new default
         self.assertEqual(updated["default_model"], "x")
+
+
+class LMStudioProviderTests(unittest.TestCase):
+    def _make_client(self):
+        return update_models.LMStudioProvider(
+            api_endpoint="http://localhost:1234/v1/chat/completions",
+            api_key=None,
+        )
+
+    def test_list_models_uses_rich_endpoint_and_filters_embeddings(self):
+        client = self._make_client()
+        rich_body = {
+            "data": [
+                {"id": "google/gemma-4-31b", "type": "vlm"},
+                {"id": "qwen-coder", "type": "llm"},
+                {"id": "text-embedding-nomic-embed", "type": "embeddings"},
+                {"id": "jina-reranker-v3-mlx", "type": "llm"},
+            ]
+        }
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = rich_body
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ) as g:
+            result = client.list_models()
+        self.assertEqual(
+            sorted(result),
+            sorted(["google/gemma-4-31b", "qwen-coder", "jina-reranker-v3-mlx"]),
+        )
+        called_url = g.call_args[0][0]
+        self.assertEqual(called_url, "http://localhost:1234/api/v0/models")
+
+    def test_list_models_falls_back_to_openai_compat_on_error(self):
+        client = self._make_client()
+        # First call (rich endpoint) raises; second call (compat endpoint) succeeds.
+        compat_body = {"data": [{"id": "fallback-model"}]}
+        compat_response = mock.Mock(status_code=200)
+        compat_response.json.return_value = compat_body
+        compat_response.raise_for_status.return_value = None
+
+        rich_response = mock.Mock(status_code=404)
+        rich_response.raise_for_status.side_effect = (
+            update_models.requests.HTTPError("404", response=rich_response)
+        )
+
+        call_count = {"n": 0}
+        def side_effect(url, *a, **kw):
+            call_count["n"] += 1
+            if "/api/v0/models" in url:
+                return rich_response
+            return compat_response
+
+        with mock.patch(
+            "update_models.requests.get", side_effect=side_effect
+        ):
+            result = client.list_models()
+        self.assertEqual(result, ["fallback-model"])
+        self.assertEqual(call_count["n"], 2)
 
 
 if __name__ == "__main__":

@@ -174,7 +174,15 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
         return [mid for mid in model_ids if _norm(mid).startswith("gemini-")]
 
     if provider == "xai":
-        return [mid for mid in model_ids if _norm(mid).startswith("grok-")]
+        kept = []
+        for mid in model_ids:
+            base = _norm(mid)
+            if not base.startswith("grok-"):
+                continue
+            if "-image" in base or "-video" in base:
+                continue
+            kept.append(mid)
+        return kept
 
     # lmstudio + anything unrecognized: pass through
     return list(model_ids)
@@ -280,7 +288,7 @@ def _openai_compat_pdf_payload(model: str) -> Dict[str, Any]:
     }
 
 
-class LMStudioProvider:
+class OpenAICompatProvider:
     name = "lmstudio"
 
     def __init__(self, api_endpoint: str, api_key: Optional[str]):
@@ -323,8 +331,45 @@ class LMStudioProvider:
             return ProbeResult(succeeded=False, supports_pdf=None, error=str(e))
 
 
-class XAIProvider(LMStudioProvider):
+class XAIProvider(OpenAICompatProvider):
     name = "xai"
+
+
+class LMStudioProvider(OpenAICompatProvider):
+    name = "lmstudio"
+
+    @property
+    def _rich_models_url(self) -> Optional[str]:
+        # The LMStudio-specific endpoint that returns type/capabilities.
+        # Derive from api_endpoint by replacing /v1/chat/completions with /api/v0/models.
+        # Fall back gracefully if the endpoint doesn't match the expected shape.
+        suffix = "/v1/chat/completions"
+        if self.api_endpoint.endswith(suffix):
+            return self.api_endpoint[: -len(suffix)] + "/api/v0/models"
+        return None
+
+    def list_models(self) -> List[str]:
+        rich_url = self._rich_models_url
+        if rich_url:
+            try:
+                response = requests.get(
+                    rich_url,
+                    headers=_bearer_headers(self.api_key),
+                    timeout=15,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, dict) and isinstance(data.get("data"), list):
+                    return [
+                        item["id"]
+                        for item in data["data"]
+                        if isinstance(item, dict)
+                        and "id" in item
+                        and item.get("type") != "embeddings"
+                    ]
+            except requests.RequestException:
+                pass  # fall through to OpenAI-compat path
+        return super().list_models()
 
 
 class AnthropicProvider:
