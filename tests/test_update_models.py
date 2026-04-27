@@ -339,5 +339,101 @@ class ProbeResultTests(unittest.TestCase):
         self.assertEqual(r.error, "boom")
 
 
+class EndpointRootTests(unittest.TestCase):
+    def test_replaces_chat_completions(self):
+        self.assertEqual(
+            update_models.derive_models_url(
+                "http://localhost:1234/v1/chat/completions"
+            ),
+            "http://localhost:1234/v1/models",
+        )
+
+    def test_appends_models_when_no_chat_completions(self):
+        self.assertEqual(
+            update_models.derive_models_url("https://api.example.com/v1"),
+            "https://api.example.com/v1/models",
+        )
+
+
+class LMStudioProviderTests(unittest.TestCase):
+    def _make_client(self):
+        return update_models.LMStudioProvider(
+            api_endpoint="http://localhost:1234/v1/chat/completions",
+            api_key=None,
+        )
+
+    def test_list_models_parses_data_array(self):
+        client = self._make_client()
+        body = {"data": [{"id": "google/gemma-4-31b"}, {"id": "custom-model"}]}
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = body
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ) as g:
+            result = client.list_models()
+        self.assertEqual(sorted(result), ["custom-model", "google/gemma-4-31b"])
+        g.assert_called_once()
+        called_url = g.call_args[0][0]
+        self.assertEqual(called_url, "http://localhost:1234/v1/models")
+
+    def test_list_models_raises_on_http_error(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=500)
+        fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
+            "500 Server Error", response=fake_response
+        )
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ):
+            with self.assertRaises(update_models.requests.HTTPError):
+                client.list_models()
+
+    def test_probe_pdf_returns_true_on_2xx(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = {"choices": [{"message": {"content": "."}}]}
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.post", return_value=fake_response
+        ):
+            result = client.probe_pdf("google/gemma-4-31b")
+        self.assertTrue(result.succeeded)
+        self.assertTrue(result.supports_pdf)
+        self.assertIsNone(result.error)
+
+    def test_probe_pdf_returns_false_on_input_rejection(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=400)
+        fake_response.text = (
+            '{"error":{"message":"This model does not support image inputs"}}'
+        )
+        fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
+            "400 Bad Request", response=fake_response
+        )
+        with mock.patch(
+            "update_models.requests.post", return_value=fake_response
+        ):
+            result = client.probe_pdf("text-only-model")
+        self.assertTrue(result.succeeded)
+        self.assertFalse(result.supports_pdf)
+        self.assertIsNone(result.error)
+
+    def test_probe_pdf_returns_error_on_other_failure(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=503)
+        fake_response.text = "Service Unavailable"
+        fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
+            "503 Service Unavailable", response=fake_response
+        )
+        with mock.patch(
+            "update_models.requests.post", return_value=fake_response
+        ):
+            result = client.probe_pdf("any-model")
+        self.assertFalse(result.succeeded)
+        self.assertIsNone(result.supports_pdf)
+        self.assertIn("503", result.error)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -214,6 +214,103 @@ def format_provider_summary(
     return f"{RED_X} {provider}  Error retrieving list of models: {error}"
 
 
+_PDF_REJECTION_MARKERS = (
+    "does not support image",
+    "does not support file",
+    "does not support pdf",
+    "does not support document",
+    "does not support multimodal",
+    "image input is not supported",
+    "file input is not supported",
+    "unsupported content",
+    "vision is not supported",
+)
+
+
+def derive_models_url(api_endpoint: str) -> str:
+    """Given a chat-completions endpoint, return the corresponding /models URL."""
+    suffix = "/chat/completions"
+    if api_endpoint.endswith(suffix):
+        return api_endpoint[: -len(suffix)] + "/models"
+    return api_endpoint.rstrip("/") + "/models"
+
+
+def _is_pdf_rejection(body_text: str) -> bool:
+    lowered = (body_text or "").lower()
+    return any(m in lowered for m in _PDF_REJECTION_MARKERS)
+
+
+def _bearer_headers(api_key: Optional[str]) -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _openai_compat_pdf_payload(model: str) -> Dict[str, Any]:
+    return {
+        "model": model,
+        "max_tokens": 1,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "."},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:application/pdf;base64,{MINIMAL_PDF_B64}"
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+
+
+class LMStudioProvider:
+    name = "lmstudio"
+
+    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+        self.models_url = derive_models_url(api_endpoint)
+
+    def list_models(self) -> List[str]:
+        response = requests.get(
+            self.models_url, headers=_bearer_headers(self.api_key), timeout=15
+        )
+        response.raise_for_status()
+        data = response.json()
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return [item["id"] for item in items if isinstance(item, dict) and "id" in item]
+
+    def probe_pdf(self, model: str) -> ProbeResult:
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                headers=_bearer_headers(self.api_key),
+                json=_openai_compat_pdf_payload(model),
+                timeout=30,
+            )
+            response.raise_for_status()
+            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        except requests.HTTPError as e:
+            body = getattr(e.response, "text", "") if e.response is not None else ""
+            if _is_pdf_rejection(body):
+                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
+            status = (
+                e.response.status_code if e.response is not None else "?"
+            )
+            return ProbeResult(
+                succeeded=False,
+                supports_pdf=None,
+                error=f"HTTP {status} {body[:200]}".strip(),
+            )
+        except requests.RequestException as e:
+            return ProbeResult(succeeded=False, supports_pdf=None, error=str(e))
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
