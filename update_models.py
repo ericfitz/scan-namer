@@ -144,6 +144,10 @@ _OPENAI_LEGACY_EXACT = frozenset({"gpt-4", "gpt-4-0613"})
 
 _OPENAI_DATED_SNAPSHOT_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
+_GOOGLE_DEPRECATED_PREFIXES = (
+    "gemini-2.0-",
+)
+
 # Global substring blocklist applied to ALL providers before any provider-specific
 # filtering. Drop names that indicate non-chat use cases: embeddings, rerankers,
 # image/audio generation, coding-specialized, robotics, etc.
@@ -210,7 +214,15 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
         return [mid for mid in model_ids if _norm(mid).startswith("claude-")]
 
     if provider == "google":
-        return [mid for mid in model_ids if _norm(mid).startswith("gemini-")]
+        kept = []
+        for mid in model_ids:
+            base = _norm(mid)
+            if not base.startswith("gemini-"):
+                continue
+            if any(base.startswith(p) for p in _GOOGLE_DEPRECATED_PREFIXES):
+                continue
+            kept.append(mid)
+        return kept
 
     if provider == "xai":
         kept = []
@@ -696,6 +708,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
+
+    if not args.verbose:
+        for noisy in (
+            "httpx",
+            "httpcore",
+            "urllib3",
+            "google_genai",
+            "google.genai",
+            "anthropic",
+            "openai",
+        ):
+            logging.getLogger(noisy).setLevel(logging.WARNING)
 
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)

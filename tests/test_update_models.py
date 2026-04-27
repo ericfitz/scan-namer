@@ -371,6 +371,21 @@ class FilterChatModelsTests(unittest.TestCase):
             ]),
         )
 
+    def test_google_drops_deprecated_2_0_models(self):
+        ids = [
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-001",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash-lite-001",
+            "models/gemini-2.5-flash",
+        ]
+        kept = update_models.filter_chat_models("google", ids)
+        self.assertEqual(
+            sorted(kept),
+            sorted(["gemini-2.5-pro", "models/gemini-2.5-flash"]),
+        )
+
 
 class AtomicWriteJsonTests(unittest.TestCase):
     def test_writes_pretty_json(self):
