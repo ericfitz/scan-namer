@@ -82,5 +82,82 @@ class ResolveApiKeyTests(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+class FetchLiteLLMRegistryTests(unittest.TestCase):
+    def test_returns_parsed_dict_on_success(self):
+        sample = {"claude-x": {"supports_pdf_input": True}}
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = sample
+        fake_response.raise_for_status.return_value = None
+        with mock.patch("update_models.requests.get", return_value=fake_response):
+            result = update_models.fetch_litellm_registry()
+        self.assertEqual(result, sample)
+
+    def test_returns_empty_dict_on_network_error(self):
+        with mock.patch(
+            "update_models.requests.get",
+            side_effect=update_models.requests.ConnectionError("boom"),
+        ):
+            result = update_models.fetch_litellm_registry()
+        self.assertEqual(result, {})
+
+    def test_returns_empty_dict_on_bad_json(self):
+        fake_response = mock.Mock(status_code=200)
+        fake_response.raise_for_status.return_value = None
+        fake_response.json.side_effect = ValueError("not json")
+        with mock.patch("update_models.requests.get", return_value=fake_response):
+            result = update_models.fetch_litellm_registry()
+        self.assertEqual(result, {})
+
+
+class LookupPdfSupportTests(unittest.TestCase):
+    REGISTRY = {
+        "claude-sonnet-4-20250514": {
+            "supports_pdf_input": True,
+            "litellm_provider": "anthropic",
+        },
+        "xai/grok-4-0709": {
+            "supports_pdf_input": None,
+            "litellm_provider": "xai",
+        },
+        "gpt-4.1-2025-04-14": {
+            "supports_pdf_input": True,
+            "litellm_provider": "openai",
+        },
+        "no-pdf-flag": {"litellm_provider": "anthropic"},
+    }
+
+    def test_finds_by_bare_id(self):
+        self.assertTrue(
+            update_models.lookup_pdf_support(
+                self.REGISTRY, "claude-sonnet-4-20250514", "anthropic"
+            )
+        )
+
+    def test_finds_by_namespaced_id(self):
+        # bare lookup misses; provider-prefixed form should hit
+        result = update_models.lookup_pdf_support(
+            self.REGISTRY, "grok-4-0709", "xai"
+        )
+        # supports_pdf_input is None in registry → return None (unknown)
+        self.assertIsNone(result)
+
+    def test_unknown_model_returns_none(self):
+        self.assertIsNone(
+            update_models.lookup_pdf_support(self.REGISTRY, "nonexistent", "openai")
+        )
+
+    def test_entry_without_pdf_flag_returns_none(self):
+        self.assertIsNone(
+            update_models.lookup_pdf_support(self.REGISTRY, "no-pdf-flag", "anthropic")
+        )
+
+    def test_false_flag_returns_false(self):
+        registry = {"some-model": {"supports_pdf_input": False}}
+        self.assertEqual(
+            update_models.lookup_pdf_support(registry, "some-model", "openai"),
+            False,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

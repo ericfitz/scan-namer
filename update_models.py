@@ -70,6 +70,40 @@ def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional
     return os.environ.get(env_name)
 
 
+def fetch_litellm_registry(url: str = LITELLM_REGISTRY_URL) -> Dict[str, Any]:
+    """Fetch the LiteLLM model registry JSON. Returns {} on any failure."""
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            logging.warning("LiteLLM registry was not a dict; treating as empty")
+            return {}
+        return data
+    except (requests.RequestException, ValueError) as e:
+        logging.warning("Could not fetch LiteLLM registry (%s); treating as empty", e)
+        return {}
+
+
+def lookup_pdf_support(
+    registry: Dict[str, Any], model_id: str, provider: str
+) -> Optional[bool]:
+    """Look up `supports_pdf_input` for a model. Returns:
+        True/False if the registry has a definitive answer.
+        None if the model is unknown, or its entry has no/null pdf flag.
+    """
+    candidates = [model_id, f"{provider}/{model_id}"]
+    for key in candidates:
+        entry = registry.get(key)
+        if not isinstance(entry, dict):
+            continue
+        flag = entry.get("supports_pdf_input")
+        if isinstance(flag, bool):
+            return flag
+        return None
+    return None
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"
