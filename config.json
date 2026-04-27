@@ -14,9 +14,7 @@
           "jina-reranker-v3-mlx",
           "llama-embed-nemotron-8b",
           "qwen/qwen3.6-35b-a3b",
-          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive",
-          "text-embedding-nomic-embed-code",
-          "text-embedding-nomic-embed-text-v1.5"
+          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive"
         ],
         "pdf_support": {
           "google/gemma-4-26b-a4b": false,
@@ -24,9 +22,7 @@
           "jina-reranker-v3-mlx": false,
           "llama-embed-nemotron-8b": false,
           "qwen/qwen3.6-35b-a3b": false,
-          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive": false,
-          "text-embedding-nomic-embed-code": false,
-          "text-embedding-nomic-embed-text-v1.5": false
+          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive": false
         },
         "default_model": "google/gemma-4-31b"
       },
@@ -313,10 +309,7 @@
           "grok-4.20-0309-non-reasoning",
           "grok-4.20-0309-reasoning",
           "grok-4.20-multi-agent-0309",
-          "grok-code-fast-1",
-          "grok-imagine-image",
-          "grok-imagine-image-pro",
-          "grok-imagine-video"
+          "grok-code-fast-1"
         ],
         "pdf_support": {
           "grok-3": false,
@@ -329,10 +322,7 @@
           "grok-4.20-0309-non-reasoning": false,
           "grok-4.20-0309-reasoning": false,
           "grok-4.20-multi-agent-0309": false,
-          "grok-code-fast-1": false,
-          "grok-imagine-image": false,
-          "grok-imagine-image-pro": false,
-          "grok-imagine-video": false
+          "grok-code-fast-1": false
         },
         "default_model": "grok-4-0709"
       }
