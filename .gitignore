@@ -215,3 +215,6 @@ CLAUDE.md
 credentials.json
 token.json
 *.env
+
+# API key files (sourced by wrapper scripts; contain secrets)
+*_API_KEY

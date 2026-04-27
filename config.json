@@ -17,6 +17,7 @@
         "default_model": "google/gemma-4-31b"
       },
       "anthropic": {
+        "api_endpoint": "https://api.anthropic.com",
         "api_key_env": "ANTHROPIC_API_KEY",
         "available_models": [
           "claude-opus-4-1-20250805",
@@ -37,6 +38,7 @@
         "default_model": "claude-sonnet-4-20250514"
       },
       "google": {
+        "api_endpoint": "https://generativelanguage.googleapis.com",
         "api_key_env": "GOOGLE_API_KEY",
         "project_id_env": "GOOGLE_PROJECT_ID",
         "location": "us-central1",
@@ -53,6 +55,7 @@
         "default_model": "gemini-2.5-flash"
       },
       "openai": {
+        "api_endpoint": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
         "available_models": [
           "gpt-5-2025-08-07",
