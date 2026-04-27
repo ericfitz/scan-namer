@@ -9,12 +9,16 @@
         "api_endpoint": "http://localhost:1234/v1/chat/completions",
         "api_key_env": "LMSTUDIO_API_KEY",
         "available_models": [
+          "google/gemma-4-26b-a4b",
           "google/gemma-4-31b",
-          "qwen/qwen3.6-35b-a3b"
+          "qwen/qwen3.6-35b-a3b",
+          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive"
         ],
         "pdf_support": {
+          "google/gemma-4-26b-a4b": false,
           "google/gemma-4-31b": false,
-          "qwen/qwen3.6-35b-a3b": false
+          "qwen/qwen3.6-35b-a3b": false,
+          "qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive": false
         },
         "default_model": "google/gemma-4-31b"
       },
@@ -23,17 +27,23 @@
         "api_key_env": "ANTHROPIC_API_KEY",
         "available_models": [
           "claude-haiku-4-5-20251001",
+          "claude-opus-4-1-20250805",
+          "claude-opus-4-20250514",
           "claude-opus-4-5-20251101",
           "claude-opus-4-6",
           "claude-opus-4-7",
+          "claude-sonnet-4-20250514",
           "claude-sonnet-4-5-20250929",
           "claude-sonnet-4-6"
         ],
         "pdf_support": {
           "claude-haiku-4-5-20251001": true,
+          "claude-opus-4-1-20250805": true,
+          "claude-opus-4-20250514": true,
           "claude-opus-4-5-20251101": true,
           "claude-opus-4-6": true,
           "claude-opus-4-7": true,
+          "claude-sonnet-4-20250514": true,
           "claude-sonnet-4-5-20250929": true,
           "claude-sonnet-4-6": true
         },
