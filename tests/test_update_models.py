@@ -211,10 +211,33 @@ class FilterChatModelsTests(unittest.TestCase):
         kept = update_models.filter_chat_models("xai", ids)
         self.assertEqual(sorted(kept), ["grok-3", "grok-4-0709"])
 
-    def test_lmstudio_keeps_everything(self):
-        ids = ["google/gemma-4-31b", "anything-loaded-locally", "totally-custom"]
+    def test_lmstudio_drops_known_non_chat_name_patterns(self):
+        ids = [
+            "google/gemma-4-31b",
+            "qwen-coder",
+            "anything-loaded-locally",
+            "totally-custom",
+            "text-embedding-nomic-embed-code",  # drop (embed)
+            "llama-embed-nemotron-8b",          # drop (embed)
+            "jina-reranker-v3-mlx",             # drop (rerank)
+            "stable-diffusion-xl",              # drop (stable-diffusion AND image)
+            "flux-1-schnell",                   # drop (flux)
+            "whisper-large-v3",                 # drop (whisper)
+            "kokoro-tts",                       # drop (tts)
+            "bark-small",                       # drop (bark)
+            "facebook-musicgen",                # drop (musicgen)
+            "sdxl-image-fix",                   # drop (image)
+        ]
         kept = update_models.filter_chat_models("lmstudio", ids)
-        self.assertEqual(sorted(kept), sorted(ids))
+        self.assertEqual(
+            sorted(kept),
+            sorted([
+                "google/gemma-4-31b",
+                "qwen-coder",
+                "anything-loaded-locally",
+                "totally-custom",
+            ]),
+        )
 
     def test_unknown_provider_keeps_everything(self):
         ids = ["a", "b"]

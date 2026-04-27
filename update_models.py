@@ -144,6 +144,18 @@ _OPENAI_NON_CHAT_SUBSTRINGS = (
     "-image",
 )
 
+_LMSTUDIO_NON_CHAT_SUBSTRINGS = (
+    "embed",
+    "rerank",
+    "image",
+    "stable-diffusion",
+    "flux",
+    "whisper",
+    "tts",
+    "bark",
+    "musicgen",
+)
+
 
 def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
     """Keep only chat-capable model ids per provider rules. LMStudio and unknown
@@ -184,7 +196,16 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
             kept.append(mid)
         return kept
 
-    # lmstudio + anything unrecognized: pass through
+    if provider == "lmstudio":
+        kept = []
+        for mid in model_ids:
+            base = _norm(mid).lower()
+            if any(s in base for s in _LMSTUDIO_NON_CHAT_SUBSTRINGS):
+                continue
+            kept.append(mid)
+        return kept
+
+    # anything unrecognized: pass through
     return list(model_ids)
 
 
