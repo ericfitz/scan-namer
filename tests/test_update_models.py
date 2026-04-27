@@ -168,6 +168,58 @@ class LookupPdfSupportTests(unittest.TestCase):
         )
 
 
+class LookupVisionSupportTests(unittest.TestCase):
+    REGISTRY = {
+        "claude-sonnet-4-20250514": {
+            "supports_vision": True,
+            "litellm_provider": "anthropic",
+        },
+        "xai/grok-4-0709": {
+            "supports_vision": None,
+            "litellm_provider": "xai",
+        },
+        "gpt-4.1-2025-04-14": {
+            "supports_vision": True,
+            "litellm_provider": "openai",
+        },
+        "no-vision-flag": {"litellm_provider": "anthropic"},
+    }
+
+    def test_finds_by_bare_id(self):
+        self.assertTrue(
+            update_models.lookup_vision_support(
+                self.REGISTRY, "claude-sonnet-4-20250514", "anthropic"
+            )
+        )
+
+    def test_finds_by_namespaced_id(self):
+        # bare lookup misses; provider-prefixed form should hit
+        result = update_models.lookup_vision_support(
+            self.REGISTRY, "grok-4-0709", "xai"
+        )
+        # supports_vision is None in registry → return None (unknown)
+        self.assertIsNone(result)
+
+    def test_unknown_model_returns_none(self):
+        self.assertIsNone(
+            update_models.lookup_vision_support(self.REGISTRY, "nonexistent", "openai")
+        )
+
+    def test_entry_without_vision_flag_returns_none(self):
+        self.assertIsNone(
+            update_models.lookup_vision_support(
+                self.REGISTRY, "no-vision-flag", "anthropic"
+            )
+        )
+
+    def test_false_flag_returns_false(self):
+        registry = {"some-model": {"supports_vision": False}}
+        self.assertEqual(
+            update_models.lookup_vision_support(registry, "some-model", "openai"),
+            False,
+        )
+
+
 class FilterChatModelsTests(unittest.TestCase):
     def test_openai_keeps_gpt_and_o_models(self):
         ids = [
@@ -433,15 +485,27 @@ class OutputFormattingTests(unittest.TestCase):
         )
 
     def test_model_line_success_true(self):
-        line = update_models.format_model_line("claude-sonnet-4", supports_pdf=True)
+        line = update_models.format_model_line(
+            "claude-sonnet-4", supports_pdf=True, supports_vision=True
+        )
         self.assertEqual(
-            line, "\t✓  Model: claude-sonnet-4  [ Supports pdf: True ]"
+            line, "\t✓  Model: claude-sonnet-4  [ pdf: True | vision: True ]"
         )
 
     def test_model_line_success_false(self):
-        line = update_models.format_model_line("claude-haiku-3-5", supports_pdf=False)
+        line = update_models.format_model_line(
+            "claude-haiku-3-5", supports_pdf=False, supports_vision=False
+        )
         self.assertEqual(
-            line, "\t✓  Model: claude-haiku-3-5  [ Supports pdf: False ]"
+            line, "\t✓  Model: claude-haiku-3-5  [ pdf: False | vision: False ]"
+        )
+
+    def test_model_line_mixed_capabilities(self):
+        line = update_models.format_model_line(
+            "some-model", supports_pdf=False, supports_vision=True
+        )
+        self.assertEqual(
+            line, "\t✓  Model: some-model  [ pdf: False | vision: True ]"
         )
 
     def test_model_line_error(self):
@@ -479,16 +543,27 @@ class MinimalPdfTests(unittest.TestCase):
         self.assertLess(len(raw), 2048)
 
 
+class MinimalPngTests(unittest.TestCase):
+    def test_base64_decodes(self):
+        raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
+        # PNG magic header is 8 bytes: \x89PNG\r\n\x1a\n
+        self.assertTrue(raw.startswith(b"\x89PNG"))
+
+    def test_size_is_reasonable(self):
+        raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
+        self.assertLess(len(raw), 256)
+
+
 class ProbeResultTests(unittest.TestCase):
     def test_success_with_pdf(self):
-        r = update_models.ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        r = update_models.ProbeResult(succeeded=True, supports=True, error=None)
         self.assertTrue(r.succeeded)
-        self.assertTrue(r.supports_pdf)
+        self.assertTrue(r.supports)
         self.assertIsNone(r.error)
 
     def test_failure_carries_error(self):
         r = update_models.ProbeResult(
-            succeeded=False, supports_pdf=None, error="boom"
+            succeeded=False, supports=None, error="boom"
         )
         self.assertFalse(r.succeeded)
         self.assertEqual(r.error, "boom")
@@ -552,9 +627,22 @@ class OpenAICompatProviderTests(unittest.TestCase):
         with mock.patch(
             "update_models.requests.post", return_value=fake_response
         ):
-            result = client.probe_pdf("google/gemma-4-31b")
+            result = client.probe("google/gemma-4-31b", "pdf")
         self.assertTrue(result.succeeded)
-        self.assertTrue(result.supports_pdf)
+        self.assertTrue(result.supports)
+        self.assertIsNone(result.error)
+
+    def test_probe_image_returns_true_on_2xx(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = {"choices": [{"message": {"content": "."}}]}
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.post", return_value=fake_response
+        ):
+            result = client.probe("google/gemma-4-31b", "image")
+        self.assertTrue(result.succeeded)
+        self.assertTrue(result.supports)
         self.assertIsNone(result.error)
 
     def test_probe_pdf_returns_false_on_input_rejection(self):
@@ -569,9 +657,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
         with mock.patch(
             "update_models.requests.post", return_value=fake_response
         ):
-            result = client.probe_pdf("text-only-model")
+            result = client.probe("text-only-model", "pdf")
         self.assertTrue(result.succeeded)
-        self.assertFalse(result.supports_pdf)
+        self.assertFalse(result.supports)
         self.assertIsNone(result.error)
 
     def test_probe_pdf_returns_error_on_other_failure(self):
@@ -584,10 +672,15 @@ class OpenAICompatProviderTests(unittest.TestCase):
         with mock.patch(
             "update_models.requests.post", return_value=fake_response
         ):
-            result = client.probe_pdf("any-model")
+            result = client.probe("any-model", "pdf")
         self.assertFalse(result.succeeded)
-        self.assertIsNone(result.supports_pdf)
+        self.assertIsNone(result.supports)
         self.assertIn("503", result.error)
+
+    def test_probe_raises_on_unknown_kind(self):
+        client = self._make_client()
+        with self.assertRaises(ValueError):
+            client.probe("some-model", "video")
 
 
 class XAIProviderTests(unittest.TestCase):
@@ -628,6 +721,7 @@ class FakeProvider:
 
     def __init__(self, models, probe_results=None, list_error=None):
         self._models = models
+        # probe_results may be keyed by (model, kind) or just model for backward compat
         self._probe_results = probe_results or {}
         self._list_error = list_error
 
@@ -636,13 +730,18 @@ class FakeProvider:
             raise self._list_error
         return list(self._models)
 
-    def probe_pdf(self, model):
-        return self._probe_results.get(
-            model,
-            update_models.ProbeResult(
-                succeeded=True, supports_pdf=False, error=None
+    def probe(self, model, kind):
+        # Try (model, kind) key first, then bare model key, then default
+        result = self._probe_results.get(
+            (model, kind),
+            self._probe_results.get(
+                model,
+                update_models.ProbeResult(
+                    succeeded=True, supports=False, error=None
+                ),
             ),
         )
+        return result
 
 
 class ProcessProviderTests(unittest.TestCase):
@@ -676,13 +775,21 @@ class ProcessProviderTests(unittest.TestCase):
             updated["pdf_support"],
             {"claude-known": True, "claude-unknown": False},
         )
+        # Vision not in registry → defaults to False
+        self.assertEqual(
+            updated["vision_support"],
+            {"claude-known": False, "claude-unknown": False},
+        )
 
     def test_probes_unknown_when_enabled(self):
         provider = FakeProvider(
             models=["claude-mystery"],
             probe_results={
-                "claude-mystery": update_models.ProbeResult(
-                    succeeded=True, supports_pdf=True, error=None
+                ("claude-mystery", "pdf"): update_models.ProbeResult(
+                    succeeded=True, supports=True, error=None
+                ),
+                ("claude-mystery", "image"): update_models.ProbeResult(
+                    succeeded=True, supports=True, error=None
                 ),
             },
         )
@@ -705,6 +812,7 @@ class ProcessProviderTests(unittest.TestCase):
             )
         self.assertTrue(summary.success)
         self.assertEqual(updated["pdf_support"], {"claude-mystery": True})
+        self.assertEqual(updated["vision_support"], {"claude-mystery": True})
 
     def test_provider_failure_returns_unchanged_block_and_failure_summary(self):
         provider = FakeProvider(
@@ -773,6 +881,36 @@ class ProcessProviderTests(unittest.TestCase):
             )
         # First model in sorted available_models becomes the new default
         self.assertEqual(updated["default_model"], "x")
+
+    def test_both_registry_fields_flow_through(self):
+        """Registry entries with both pdf and vision flags carry through correctly."""
+        provider = FakeProvider(models=["model-a", "model-b"])
+        registry = {
+            "model-a": {"supports_pdf_input": True, "supports_vision": True},
+            "model-b": {"supports_pdf_input": False, "supports_vision": False},
+        }
+        block = {
+            "api_endpoint": "https://x.example",
+            "api_key_env": "X",
+            "available_models": [],
+            "pdf_support": {},
+        }
+        with mock.patch.object(
+            update_models, "filter_chat_models",
+            side_effect=lambda p, ids: ids,
+        ):
+            updated, summary = update_models.process_provider(
+                provider_name="fake",
+                provider_block=block,
+                client=provider,
+                registry=registry,
+                enable_probing=False,
+            )
+        self.assertTrue(summary.success)
+        self.assertEqual(updated["pdf_support"], {"model-a": True, "model-b": False})
+        self.assertEqual(
+            updated["vision_support"], {"model-a": True, "model-b": False}
+        )
 
 
 class LMStudioProviderTests(unittest.TestCase):

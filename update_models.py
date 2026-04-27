@@ -48,13 +48,19 @@ MINIMAL_PDF_B64 = (
     "8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxNTYKJSVFT0YK"
 )
 
+# 1x1 transparent PNG, valid magic header, ~67 bytes raw.
+MINIMAL_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg"
+    "AAIAAAUAAen63NgAAAAASUVORK5CYII="
+)
+
 
 @dataclass
 class ProbeResult:
-    """Outcome of a single PDF probe."""
+    """Outcome of a single capability probe (pdf or image)."""
 
     succeeded: bool
-    supports_pdf: Optional[bool]
+    supports: Optional[bool]
     error: Optional[str]
 
 
@@ -120,6 +126,22 @@ def lookup_pdf_support(
         if not isinstance(entry, dict):
             continue
         flag = entry.get("supports_pdf_input")
+        if isinstance(flag, bool):
+            return flag
+        return None
+    return None
+
+
+def lookup_vision_support(
+    registry: Dict[str, Any], model_id: str, provider: str
+) -> Optional[bool]:
+    """Look up `supports_vision` for a model in the LiteLLM registry."""
+    candidates = [model_id, f"{provider}/{model_id}"]
+    for key in candidates:
+        entry = registry.get(key)
+        if not isinstance(entry, dict):
+            continue
+        flag = entry.get("supports_vision")
         if isinstance(flag, bool):
             return flag
         return None
@@ -270,11 +292,15 @@ def format_header(provider: str, endpoint: str) -> str:
 def format_model_line(
     model: str,
     supports_pdf: Optional[bool] = None,
+    supports_vision: Optional[bool] = None,
     error: Optional[str] = None,
 ) -> str:
     if error is not None:
         return f"\t{ASCII_X}  Model: {model}  [ Error: {error} ]"
-    return f"\t{ASCII_CHECK}  Model: {model}  [ Supports pdf: {supports_pdf} ]"
+    return (
+        f"\t{ASCII_CHECK}  Model: {model}  "
+        f"[ pdf: {supports_pdf} | vision: {supports_vision} ]"
+    )
 
 
 def format_provider_summary(
@@ -306,7 +332,7 @@ def derive_models_url(api_endpoint: str) -> str:
     return api_endpoint.rstrip("/") + "/models"
 
 
-def _is_pdf_rejection(body_text: str) -> bool:
+def _is_capability_rejection(body_text: str) -> bool:
     lowered = (body_text or "").lower()
     return any(m in lowered for m in _PDF_REJECTION_MARKERS)
 
@@ -339,6 +365,27 @@ def _openai_compat_pdf_payload(model: str) -> Dict[str, Any]:
     }
 
 
+def _openai_compat_image_payload(model: str) -> Dict[str, Any]:
+    return {
+        "model": model,
+        "max_tokens": 1,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "."},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{MINIMAL_PNG_B64}"
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+
+
 class OpenAICompatProvider:
     name = "lmstudio"
 
@@ -356,30 +403,34 @@ class OpenAICompatProvider:
         items = data.get("data", []) if isinstance(data, dict) else []
         return [item["id"] for item in items if isinstance(item, dict) and "id" in item]
 
-    def probe_pdf(self, model: str) -> ProbeResult:
+    def probe(self, model: str, kind: str) -> ProbeResult:
+        if kind == "pdf":
+            payload = _openai_compat_pdf_payload(model)
+        elif kind == "image":
+            payload = _openai_compat_image_payload(model)
+        else:
+            raise ValueError(f"unknown probe kind: {kind!r}")
         try:
             response = requests.post(
                 self.api_endpoint,
                 headers=_bearer_headers(self.api_key),
-                json=_openai_compat_pdf_payload(model),
+                json=payload,
                 timeout=30,
             )
             response.raise_for_status()
-            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+            return ProbeResult(succeeded=True, supports=True, error=None)
         except requests.HTTPError as e:
             body = getattr(e.response, "text", "") if e.response is not None else ""
-            if _is_pdf_rejection(body):
-                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
-            status = (
-                e.response.status_code if e.response is not None else "?"
-            )
+            if _is_capability_rejection(body):
+                return ProbeResult(succeeded=True, supports=False, error=None)
+            status = e.response.status_code if e.response is not None else "?"
             return ProbeResult(
                 succeeded=False,
-                supports_pdf=None,
+                supports=None,
                 error=f"HTTP {status} {body[:200]}".strip(),
             )
         except requests.RequestException as e:
-            return ProbeResult(succeeded=False, supports_pdf=None, error=str(e))
+            return ProbeResult(succeeded=False, supports=None, error=str(e))
 
 
 class XAIProvider(OpenAICompatProvider):
@@ -447,7 +498,27 @@ class AnthropicProvider:
                 ids.append(mid)
         return ids
 
-    def probe_pdf(self, model: str) -> ProbeResult:
+    def probe(self, model: str, kind: str) -> ProbeResult:
+        if kind == "pdf":
+            content_part = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": MINIMAL_PDF_B64,
+                },
+            }
+        elif kind == "image":
+            content_part = {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": MINIMAL_PNG_B64,
+                },
+            }
+        else:
+            raise ValueError(f"unknown probe kind: {kind!r}")
         try:
             client = self._client()
             client.messages.create(
@@ -456,28 +527,18 @@ class AnthropicProvider:
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "application/pdf",
-                                    "data": MINIMAL_PDF_B64,
-                                },
-                            },
-                            {"type": "text", "text": "."},
-                        ],
+                        "content": [content_part, {"type": "text", "text": "."}],
                     }
                 ],
             )
-            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+            return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001 — SDK wraps a wide range of errors
             msg = str(e)
-            if _is_pdf_rejection(msg) or (
+            if _is_capability_rejection(msg) or (
                 "document" in msg.lower() and "support" in msg.lower()
             ):
-                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
-            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
+                return ProbeResult(succeeded=True, supports=False, error=None)
+            return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 
 
 class OpenAIProvider:
@@ -504,7 +565,13 @@ class OpenAIProvider:
                 ids.append(mid)
         return ids
 
-    def probe_pdf(self, model: str) -> ProbeResult:
+    def probe(self, model: str, kind: str) -> ProbeResult:
+        if kind == "pdf":
+            url = f"data:application/pdf;base64,{MINIMAL_PDF_B64}"
+        elif kind == "image":
+            url = f"data:image/png;base64,{MINIMAL_PNG_B64}"
+        else:
+            raise ValueError(f"unknown probe kind: {kind!r}")
         try:
             client = self._client()
             client.chat.completions.create(
@@ -517,23 +584,18 @@ class OpenAIProvider:
                             {"type": "text", "text": "."},
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": (
-                                        f"data:application/pdf;base64,"
-                                        f"{MINIMAL_PDF_B64}"
-                                    )
-                                },
+                                "image_url": {"url": url},
                             },
                         ],
                     }
                 ],
             )
-            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+            return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001
             msg = str(e)
-            if _is_pdf_rejection(msg):
-                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
-            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
+            if _is_capability_rejection(msg):
+                return ProbeResult(succeeded=True, supports=False, error=None)
+            return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 
 
 class GoogleProvider:
@@ -564,26 +626,34 @@ class GoogleProvider:
             ids.append(mid)
         return ids
 
-    def probe_pdf(self, model: str) -> ProbeResult:
+    def probe(self, model: str, kind: str) -> ProbeResult:
+        if kind == "pdf":
+            mime = "application/pdf"
+            data_b64 = MINIMAL_PDF_B64
+        elif kind == "image":
+            mime = "image/png"
+            data_b64 = MINIMAL_PNG_B64
+        else:
+            raise ValueError(f"unknown probe kind: {kind!r}")
         try:
             from google.genai import types
 
             client = self._client()
-            pdf_bytes = base64.b64decode(MINIMAL_PDF_B64)
+            raw = base64.b64decode(data_b64)
             client.models.generate_content(
                 model=model,
                 contents=[
-                    types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
+                    types.Part.from_bytes(data=raw, mime_type=mime),
                     ".",
                 ],
                 config={"max_output_tokens": 1},
             )
-            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+            return ProbeResult(succeeded=True, supports=True, error=None)
         except Exception as e:  # noqa: BLE001
             msg = str(e)
-            if _is_pdf_rejection(msg):
-                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
-            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
+            if _is_capability_rejection(msg):
+                return ProbeResult(succeeded=True, supports=False, error=None)
+            return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -666,34 +736,49 @@ def process_provider(
     filtered = sorted(set(filter_chat_models(provider_name, raw_ids)))
 
     new_pdf_support: Dict[str, bool] = {}
+    new_vision_support: Dict[str, bool] = {}
     kept_models: List[str] = []
 
     for mid in filtered:
-        known = lookup_pdf_support(registry, mid, provider_name)
-        if known is not None:
-            print(format_model_line(mid, supports_pdf=known))
-            kept_models.append(mid)
-            new_pdf_support[mid] = known
-            continue
+        pdf_known = lookup_pdf_support(registry, mid, provider_name)
+        vision_known = lookup_vision_support(registry, mid, provider_name)
 
-        if enable_probing:
-            result = client.probe_pdf(mid)
-            if result.succeeded:
-                print(format_model_line(mid, supports_pdf=bool(result.supports_pdf)))
-                kept_models.append(mid)
-                new_pdf_support[mid] = bool(result.supports_pdf)
-            else:
-                print(format_model_line(mid, error=result.error))
-            continue
+        # Decide pdf support
+        if pdf_known is not None:
+            pdf_value: Optional[bool] = pdf_known
+        elif enable_probing:
+            r = client.probe(mid, "pdf")
+            if not r.succeeded:
+                # Probe failed altogether — drop the model and report.
+                print(format_model_line(mid, error=r.error))
+                continue
+            pdf_value = bool(r.supports)
+        else:
+            pdf_value = False
 
-        # Unknown and probing disabled: include with False
-        print(format_model_line(mid, supports_pdf=False))
+        # Decide vision support
+        if vision_known is not None:
+            vision_value: Optional[bool] = vision_known
+        elif enable_probing:
+            r = client.probe(mid, "image")
+            if not r.succeeded:
+                print(format_model_line(mid, error=r.error))
+                continue
+            vision_value = bool(r.supports)
+        else:
+            vision_value = False
+
+        print(format_model_line(
+            mid, supports_pdf=pdf_value, supports_vision=vision_value
+        ))
         kept_models.append(mid)
-        new_pdf_support[mid] = False
+        new_pdf_support[mid] = pdf_value
+        new_vision_support[mid] = vision_value
 
     new_block = copy.deepcopy(provider_block)
     new_block["available_models"] = kept_models
     new_block["pdf_support"] = new_pdf_support
+    new_block["vision_support"] = new_vision_support
 
     current_default = new_block.get("default_model")
     if current_default not in kept_models:
