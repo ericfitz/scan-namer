@@ -39,6 +39,12 @@ This script does the following:
 
 ## quick start
 ```bash
+# 0. Install system dependencies (see setup_instructions.md for details)
+#    macOS:        brew install poppler tesseract
+#    Debian/Ubuntu: sudo apt-get install poppler-utils tesseract-ocr
+#    poppler is required for image-based PDFs and any vision-only model;
+#    tesseract is required only with --enable-ocr-embedding.
+
 # 1. Set up API keys
 cp .env.example .env
 # Edit .env with your API key (XAI_API_KEY, ANTHROPIC_API_KEY, etc.)

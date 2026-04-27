@@ -4,12 +4,35 @@
 
 1. **Python 3.8+** installed on your system
 2. **uv** package manager installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
-3. **Google Drive API credentials** (OAuth 2.0)
-4. **LLM API access** from your chosen provider:
+3. **System dependencies** (see below)
+4. **Google Drive API credentials** (OAuth 2.0)
+5. **LLM API access** from your chosen provider:
    - X.AI (Grok) - supports PDF uploads with Grok-4 and Grok Vision
    - Anthropic (Claude) - supports PDF uploads with Claude 4, 3.5/3.7 Sonnet
    - OpenAI (GPT) - supports PDF uploads with GPT-4o, GPT-4o-mini, o3
    - Google (Gemini) - supports PDF uploads with Gemini 2.5 series
+   - LM Studio (local, OpenAI-compatible)
+
+### System Dependencies
+
+The Python deps are handled by `uv`, but two native binaries must be present on `PATH`:
+
+- **poppler** — required for converting PDFs to images. Used whenever the script falls back to vision-based analysis (image-only PDFs, `--no-ocr`, or any vision-only model that needs rasterized pages).
+- **tesseract** — required only when running with `--enable-ocr-embedding`.
+
+If poppler is missing you will see `Unable to get page count. Is poppler installed and in PATH?` from `pdf2image`. If tesseract is missing OCR will fail at runtime.
+
+Install on macOS:
+
+```bash
+brew install poppler tesseract
+```
+
+Install on Debian/Ubuntu:
+
+```bash
+sudo apt-get install poppler-utils tesseract-ocr
+```
 
 ## Setup Steps
 
