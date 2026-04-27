@@ -1198,6 +1198,21 @@ class OpenAIClient(BaseLLMClient):
             )
             sys.exit(1)
 
+    def _extract_usage(self, response: Any) -> Dict[str, int]:
+        """Extract token usage from a chat-completions response.
+
+        Defensive against missing/zero usage fields, which can happen with
+        local OpenAI-compatible servers (e.g., LM Studio, llama.cpp).
+        """
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        return {
+            "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+            "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+            "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+        }
+
     def _analyze_via_rasterized_pages(
         self, pdf_path: str, prompt_config: Dict[str, Any]
     ) -> Tuple[Optional[str], Dict[str, Any]]:
@@ -1236,11 +1251,7 @@ class OpenAIClient(BaseLLMClient):
                 temperature=self.temperature,
             )
 
-            cost_info = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
+            cost_info = self._extract_usage(response)
             self.token_costs.append(cost_info)
 
             suggested_name = response.choices[0].message.content.strip()
@@ -1318,11 +1329,7 @@ class OpenAIClient(BaseLLMClient):
                 temperature=self.temperature,
             )
 
-            cost_info = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
+            cost_info = self._extract_usage(response)
             self.token_costs.append(cost_info)
 
             suggested_name = response.choices[0].message.content.strip()
