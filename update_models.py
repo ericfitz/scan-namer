@@ -16,6 +16,7 @@ be probed with a tiny PDF.
 # ///
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -313,6 +314,63 @@ class LMStudioProvider:
 
 class XAIProvider(LMStudioProvider):
     name = "xai"
+
+
+class AnthropicProvider:
+    name = "anthropic"
+
+    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+
+    def _client(self):
+        import anthropic
+
+        # If api_key is None, the SDK will read ANTHROPIC_API_KEY from env;
+        # if neither is set, the SDK raises on first call.
+        return anthropic.Anthropic(api_key=self.api_key) if self.api_key else anthropic.Anthropic()
+
+    def list_models(self) -> List[str]:
+        client = self._client()
+        ids: List[str] = []
+        # SDK paginates automatically when iterating
+        for entry in client.models.list():
+            mid = getattr(entry, "id", None)
+            if mid:
+                ids.append(mid)
+        return ids
+
+    def probe_pdf(self, model: str) -> ProbeResult:
+        try:
+            client = self._client()
+            client.messages.create(
+                model=model,
+                max_tokens=1,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "application/pdf",
+                                    "data": MINIMAL_PDF_B64,
+                                },
+                            },
+                            {"type": "text", "text": "."},
+                        ],
+                    }
+                ],
+            )
+            return ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        except Exception as e:  # noqa: BLE001 — SDK wraps a wide range of errors
+            msg = str(e)
+            if _is_pdf_rejection(msg) or (
+                "document" in msg.lower() and "support" in msg.lower()
+            ):
+                return ProbeResult(succeeded=True, supports_pdf=False, error=None)
+            return ProbeResult(succeeded=False, supports_pdf=None, error=msg[:300])
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
