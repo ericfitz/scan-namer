@@ -81,6 +81,7 @@ Run with the bash wrapper:
   - Anthropic Claude API (PDF support: Claude 4, 3.5/3.7 Sonnet)
   - OpenAI GPT API (vision models: GPT-4o, GPT-4o-mini, o3)
   - Google Vertex AI (vision models: Gemini 2.5 Pro/Flash/Flash-Lite)
+  - LM Studio (local, OpenAI-compatible; vision models supported via rasterized-page upload)
 - **Configuration Management**: JSON config with environment variable overrides
 - **Logging**: RFC3339 formatted logs with token usage and cost tracking
 

@@ -9,7 +9,7 @@ All the PDFs have generic names like "20240108_Raven_Scan.pdf".
 I wanted to build a tool that would read the documents and rename them to something meaningful and indicative of the contents of the document.
 
 ## features
-- **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini)
+- **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini), LM Studio (local, OpenAI-compatible)
 - **Smart PDF processing**: Text extraction with automatic fallback to direct PDF upload
 - **Vision model support**: Handles image-based PDFs when text extraction fails or if preferred
 - **OCR embedding**: Automatically detects image-only PDFs and adds searchable text layer
