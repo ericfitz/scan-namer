@@ -136,6 +136,14 @@ _OPENAI_NON_CHAT_PREFIXES = (
     "davinci-",
 )
 
+_OPENAI_NON_CHAT_SUBSTRINGS = (
+    "-audio-preview",
+    "-realtime",
+    "-transcribe",
+    "-tts",
+    "-image",
+)
+
 
 def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
     """Keep only chat-capable model ids per provider rules. LMStudio and unknown
@@ -150,6 +158,8 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
         for mid in model_ids:
             base = _norm(mid)
             if any(base.startswith(p) for p in _OPENAI_NON_CHAT_PREFIXES):
+                continue
+            if any(s in base for s in _OPENAI_NON_CHAT_SUBSTRINGS):
                 continue
             if base.startswith("gpt-") or (
                 len(base) >= 2 and base[0] == "o" and base[1].isdigit()

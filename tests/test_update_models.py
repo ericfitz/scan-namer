@@ -231,6 +231,28 @@ class FilterChatModelsTests(unittest.TestCase):
         for provider in ("openai", "anthropic", "google", "xai", "lmstudio"):
             self.assertEqual(update_models.filter_chat_models(provider, []), [])
 
+    def test_openai_excludes_audio_realtime_transcribe_tts_image(self):
+        # gpt-prefixed but not text chat
+        ids = [
+            "gpt-4o",                        # keep
+            "gpt-4o-audio-preview",          # drop
+            "gpt-4o-mini-audio-preview",     # drop
+            "gpt-4o-mini-realtime-preview",  # drop
+            "gpt-4o-mini-transcribe",        # drop
+            "gpt-4o-mini-tts",               # drop
+            "gpt-image-1",                   # drop
+            "gpt-4o-mini-search-preview",    # keep (legitimate chat with search)
+        ]
+        kept = update_models.filter_chat_models("openai", ids)
+        self.assertIn("gpt-4o", kept)
+        self.assertIn("gpt-4o-mini-search-preview", kept)
+        self.assertNotIn("gpt-4o-audio-preview", kept)
+        self.assertNotIn("gpt-4o-mini-audio-preview", kept)
+        self.assertNotIn("gpt-4o-mini-realtime-preview", kept)
+        self.assertNotIn("gpt-4o-mini-transcribe", kept)
+        self.assertNotIn("gpt-4o-mini-tts", kept)
+        self.assertNotIn("gpt-image-1", kept)
+
 
 class AtomicWriteJsonTests(unittest.TestCase):
     def test_writes_pretty_json(self):
