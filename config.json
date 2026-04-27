@@ -208,13 +208,13 @@
           "grok-4.20-0309-reasoning"
         ],
         "pdf_support": {
-          "grok-4-0709": false,
-          "grok-4-1-fast-non-reasoning": false,
-          "grok-4-1-fast-reasoning": false,
-          "grok-4-fast-non-reasoning": false,
-          "grok-4-fast-reasoning": false,
-          "grok-4.20-0309-non-reasoning": false,
-          "grok-4.20-0309-reasoning": false
+          "grok-4-0709": true,
+          "grok-4-1-fast-non-reasoning": true,
+          "grok-4-1-fast-reasoning": true,
+          "grok-4-fast-non-reasoning": true,
+          "grok-4-fast-reasoning": true,
+          "grok-4.20-0309-non-reasoning": true,
+          "grok-4.20-0309-reasoning": true
         },
         "default_model": "grok-4-0709",
         "vision_support": {
