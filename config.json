@@ -18,8 +18,8 @@
         },
         "default_model": "google/gemma-4-31b",
         "vision_support": {
-          "google/gemma-4-31b": true,
-          "qwen/qwen3.6-35b-a3b": true
+          "google/gemma-4-31b": false,
+          "qwen/qwen3.6-35b-a3b": false
         }
       },
       "anthropic": {
@@ -130,8 +130,6 @@
           "gpt-5.4-pro",
           "gpt-5.5",
           "gpt-5.5-pro",
-          "o1",
-          "o1-pro",
           "o3",
           "o3-mini",
           "o3-pro",
@@ -161,8 +159,6 @@
           "gpt-5.4-pro": true,
           "gpt-5.5": true,
           "gpt-5.5-pro": true,
-          "o1": true,
-          "o1-pro": true,
           "o3": true,
           "o3-mini": false,
           "o3-pro": true,
@@ -193,8 +189,6 @@
           "gpt-5.4-pro": true,
           "gpt-5.5": true,
           "gpt-5.5-pro": true,
-          "o1": true,
-          "o1-pro": true,
           "o3": true,
           "o3-mini": false,
           "o3-pro": true,
@@ -205,8 +199,6 @@
         "api_endpoint": "https://api.x.ai/v1/chat/completions",
         "api_key_env": "XAI_API_KEY",
         "available_models": [
-          "grok-3",
-          "grok-3-mini",
           "grok-4-0709",
           "grok-4-1-fast-non-reasoning",
           "grok-4-1-fast-reasoning",
@@ -216,8 +208,6 @@
           "grok-4.20-0309-reasoning"
         ],
         "pdf_support": {
-          "grok-3": false,
-          "grok-3-mini": false,
           "grok-4-0709": false,
           "grok-4-1-fast-non-reasoning": false,
           "grok-4-1-fast-reasoning": false,
@@ -228,14 +218,12 @@
         },
         "default_model": "grok-4-0709",
         "vision_support": {
-          "grok-3": false,
-          "grok-3-mini": false,
-          "grok-4-0709": true,
+          "grok-4-0709": false,
           "grok-4-1-fast-non-reasoning": true,
           "grok-4-1-fast-reasoning": true,
-          "grok-4-fast-non-reasoning": true,
-          "grok-4-fast-reasoning": true,
-          "grok-4.20-0309-non-reasoning": true,
+          "grok-4-fast-non-reasoning": false,
+          "grok-4-fast-reasoning": false,
+          "grok-4.20-0309-non-reasoning": false,
           "grok-4.20-0309-reasoning": true
         }
       }
