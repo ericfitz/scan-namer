@@ -51,10 +51,6 @@
         "project_id_env": "GOOGLE_PROJECT_ID",
         "location": "us-central1",
         "available_models": [
-          "gemini-2.0-flash",
-          "gemini-2.0-flash-001",
-          "gemini-2.0-flash-lite",
-          "gemini-2.0-flash-lite-001",
           "gemini-2.5-flash",
           "gemini-2.5-flash-lite",
           "gemini-2.5-pro",
@@ -67,10 +63,6 @@
           "gemini-pro-latest"
         ],
         "pdf_support": {
-          "gemini-2.0-flash": false,
-          "gemini-2.0-flash-001": false,
-          "gemini-2.0-flash-lite": false,
-          "gemini-2.0-flash-lite-001": false,
           "gemini-2.5-flash": true,
           "gemini-2.5-flash-lite": true,
           "gemini-2.5-pro": true,
@@ -176,7 +168,7 @@
           "grok-4.20-0309-non-reasoning": false,
           "grok-4.20-0309-reasoning": false
         },
-        "default_model": "grok-4-fast-non-reasoning"
+        "default_model": "grok-3"
       }
     }
   },
