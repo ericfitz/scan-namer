@@ -1630,6 +1630,8 @@ class LLMClientFactory:
             return OpenAIClient(config, provider, model, max_tokens)
         elif provider == "google":
             return GoogleClient(config, provider, model, max_tokens)
+        elif provider == "lmstudio":
+            return LMStudioClient(config, provider, model, max_tokens)
         else:
             logging.error(f"No client implementation for provider: {provider}")
             sys.exit(1)
