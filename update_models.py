@@ -35,6 +35,26 @@ LITELLM_REGISTRY_URL = (
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
 
+# Minimal valid 1-page PDF (612x792 / US Letter, no content stream).
+# Generated once and pinned; verify integrity in tests.
+MINIMAL_PDF_B64 = (
+    "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiA"
+    "wIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iag"
+    "o8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDYxMiA3OTJdL1BhcmVudCAyIDAgUi9SZXNvdXJjZ"
+    "XM8PD4+Pj4KZW5kb2JqCnhyZWYKMCA0CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAw"
+    "MDAwMCBuIAowMDAwMDAwMDUyIDAwMDAwIG4gCjAwMDAwMDAwOTcgMDAwMDAgbiAKdHJhaWxlcgo"
+    "8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxNTYKJSVFT0YK"
+)
+
+
+@dataclass
+class ProbeResult:
+    """Outcome of a single PDF probe."""
+
+    succeeded: bool
+    supports_pdf: Optional[bool]
+    error: Optional[str]
+
 
 _EXPORT_LINE_RE = re.compile(
     r"""^\s*(?:export\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>.*?)\s*$"""

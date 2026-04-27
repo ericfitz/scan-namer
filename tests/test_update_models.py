@@ -1,4 +1,5 @@
 """Unit tests for update_models.py pure helpers."""
+import base64
 import os
 import sys
 import tempfile
@@ -308,6 +309,34 @@ class OutputFormattingTests(unittest.TestCase):
         self.assertEqual(
             line, "❌ xai  Error retrieving list of models: HTTP 401 unauthorized"
         )
+
+
+class MinimalPdfTests(unittest.TestCase):
+    def test_base64_decodes(self):
+        raw = base64.b64decode(update_models.MINIMAL_PDF_B64)
+        # Must start with the PDF magic header and end with %%EOF
+        self.assertTrue(raw.startswith(b"%PDF-"))
+        self.assertIn(b"%%EOF", raw)
+
+    def test_size_is_reasonable(self):
+        raw = base64.b64decode(update_models.MINIMAL_PDF_B64)
+        # Few hundred bytes per the spec; not many KB
+        self.assertLess(len(raw), 2048)
+
+
+class ProbeResultTests(unittest.TestCase):
+    def test_success_with_pdf(self):
+        r = update_models.ProbeResult(succeeded=True, supports_pdf=True, error=None)
+        self.assertTrue(r.succeeded)
+        self.assertTrue(r.supports_pdf)
+        self.assertIsNone(r.error)
+
+    def test_failure_carries_error(self):
+        r = update_models.ProbeResult(
+            succeeded=False, supports_pdf=None, error="boom"
+        )
+        self.assertFalse(r.succeeded)
+        self.assertEqual(r.error, "boom")
 
 
 if __name__ == "__main__":
