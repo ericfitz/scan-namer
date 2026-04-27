@@ -129,7 +129,9 @@ def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
             base = _norm(mid)
             if any(base.startswith(p) for p in _OPENAI_NON_CHAT_PREFIXES):
                 continue
-            if base.startswith("gpt-") or base.startswith("o"):
+            if base.startswith("gpt-") or (
+                len(base) >= 2 and base[0] == "o" and base[1].isdigit()
+            ):
                 kept.append(mid)
         return kept
 

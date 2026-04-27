@@ -213,6 +213,23 @@ class FilterChatModelsTests(unittest.TestCase):
         kept = update_models.filter_chat_models("never-heard-of-it", ids)
         self.assertEqual(sorted(kept), sorted(ids))
 
+    def test_openai_excludes_o_prefix_without_digit(self):
+        # The "o" matcher must require a digit follow (o1, o3, o4) — bare "o"
+        # words like a hypothetical "octopus-3" should NOT be kept.
+        ids = ["o1-mini", "o3", "octopus-3", "omni-foo", "gpt-4o"]
+        kept = update_models.filter_chat_models("openai", ids)
+        # o1-mini and o3 keep (digit after o); gpt-4o keeps (gpt- prefix).
+        # octopus-3 and omni-foo must be dropped.
+        self.assertIn("o1-mini", kept)
+        self.assertIn("o3", kept)
+        self.assertIn("gpt-4o", kept)
+        self.assertNotIn("octopus-3", kept)
+        self.assertNotIn("omni-foo", kept)
+
+    def test_filter_handles_empty_list(self):
+        for provider in ("openai", "anthropic", "google", "xai", "lmstudio"):
+            self.assertEqual(update_models.filter_chat_models(provider, []), [])
+
 
 if __name__ == "__main__":
     unittest.main()
