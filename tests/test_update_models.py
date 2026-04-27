@@ -57,6 +57,30 @@ class ResolveApiKeyTests(unittest.TestCase):
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
         self.assertEqual(result, "plain")
 
+    def test_strips_single_quotes(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "MY_KEY")
+            with open(path, "w") as f:
+                f.write("export MY_KEY='abc 123'\n")
+            result = update_models.resolve_api_key("MY_KEY", project_root=root)
+        self.assertEqual(result, "abc 123")
+
+    def test_handles_value_with_embedded_equals(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "MY_KEY")
+            with open(path, "w") as f:
+                f.write("export MY_KEY=base64==value\n")
+            result = update_models.resolve_api_key("MY_KEY", project_root=root)
+        self.assertEqual(result, "base64==value")
+
+    def test_handles_empty_value(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "MY_KEY")
+            with open(path, "w") as f:
+                f.write("export MY_KEY=\n")
+            result = update_models.resolve_api_key("MY_KEY", project_root=root)
+        self.assertEqual(result, "")
+
 
 if __name__ == "__main__":
     unittest.main()
