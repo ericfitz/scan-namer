@@ -311,6 +311,10 @@ class LMStudioProvider:
             return ProbeResult(succeeded=False, supports_pdf=None, error=str(e))
 
 
+class XAIProvider(LMStudioProvider):
+    name = "xai"
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"

@@ -435,5 +435,36 @@ class LMStudioProviderTests(unittest.TestCase):
         self.assertIn("503", result.error)
 
 
+class XAIProviderTests(unittest.TestCase):
+    def _make_client(self, api_key="key"):
+        return update_models.XAIProvider(
+            api_endpoint="https://api.x.ai/v1/chat/completions",
+            api_key=api_key,
+        )
+
+    def test_models_url_correct(self):
+        client = self._make_client()
+        self.assertEqual(client.models_url, "https://api.x.ai/v1/models")
+
+    def test_list_models_passes_bearer_token(self):
+        client = self._make_client(api_key="xai-secret")
+        body = {"data": [{"id": "grok-4-0709"}, {"id": "grok-3"}]}
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = body
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ) as g:
+            result = client.list_models()
+        self.assertEqual(sorted(result), ["grok-3", "grok-4-0709"])
+        called_kwargs = g.call_args.kwargs
+        self.assertEqual(
+            called_kwargs["headers"]["Authorization"], "Bearer xai-secret"
+        )
+
+    def test_name_is_xai(self):
+        self.assertEqual(self._make_client().name, "xai")
+
+
 if __name__ == "__main__":
     unittest.main()
