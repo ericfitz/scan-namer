@@ -1385,9 +1385,11 @@ class LMStudioClient(OpenAIClient):
             sys.exit(1)
 
         # The openai SDK expects the base URL (e.g. http://localhost:1234/v1),
-        # not the full chat-completions URL. Strip the suffix if present.
-        base_url = endpoint
+        # not the full chat-completions URL. Strip a trailing slash first so
+        # configured endpoints like ".../chat/completions/" still match the
+        # suffix check, then strip the suffix, then strip any remaining slash.
         suffix = "/chat/completions"
+        base_url = endpoint.rstrip("/")
         if base_url.endswith(suffix):
             base_url = base_url[: -len(suffix)]
         base_url = base_url.rstrip("/")
