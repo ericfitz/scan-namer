@@ -330,6 +330,15 @@ class FilterChatModelsTests(unittest.TestCase):
                     sorted(expected),
                 )
 
+    def test_global_filter_drops_computer_use_and_customtools(self):
+        ids = [
+            "gemini-2.5-pro",
+            "gemini-2.5-computer-use-preview-10-2025",
+            "gemini-3.1-pro-preview-customtools",
+        ]
+        kept = update_models.filter_chat_models("google", ids)
+        self.assertEqual(kept, ["gemini-2.5-pro"])
+
     def test_openai_drops_dated_snapshots_and_legacy(self):
         ids = [
             "gpt-4o",                            # keep (alias)

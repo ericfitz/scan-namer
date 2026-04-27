@@ -165,6 +165,8 @@ _NON_CHAT_NAME_SUBSTRINGS = (
     "flash-live",
     "multi-agent",
     "search",
+    "computer-use",
+    "customtools",
 )
 
 
