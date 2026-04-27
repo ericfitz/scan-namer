@@ -18,8 +18,8 @@
         },
         "default_model": "google/gemma-4-31b",
         "vision_support": {
-          "google/gemma-4-31b": false,
-          "qwen/qwen3.6-35b-a3b": false
+          "google/gemma-4-31b": true,
+          "qwen/qwen3.6-35b-a3b": true
         }
       },
       "anthropic": {
@@ -226,16 +226,16 @@
           "grok-4.20-0309-non-reasoning": false,
           "grok-4.20-0309-reasoning": false
         },
-        "default_model": "grok-3",
+        "default_model": "grok-4-0709",
         "vision_support": {
           "grok-3": false,
           "grok-3-mini": false,
-          "grok-4-0709": false,
+          "grok-4-0709": true,
           "grok-4-1-fast-non-reasoning": true,
           "grok-4-1-fast-reasoning": true,
-          "grok-4-fast-non-reasoning": false,
-          "grok-4-fast-reasoning": false,
-          "grok-4.20-0309-non-reasoning": false,
+          "grok-4-fast-non-reasoning": true,
+          "grok-4-fast-reasoning": true,
+          "grok-4.20-0309-non-reasoning": true,
           "grok-4.20-0309-reasoning": true
         }
       }
