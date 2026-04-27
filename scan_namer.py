@@ -658,6 +658,155 @@ class XAIClient(BaseLLMClient):
             sys.exit(1)
         return api_key
 
+    def _files_url(self) -> str:
+        """Derive the xAI Files API URL from the chat-completions endpoint."""
+        suffix = "/chat/completions"
+        base = self.endpoint if isinstance(self.endpoint, str) else ""
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return base.rstrip("/") + "/files"
+
+    def _responses_url(self) -> str:
+        """Derive the xAI Responses API URL from the chat-completions endpoint."""
+        suffix = "/chat/completions"
+        base = self.endpoint if isinstance(self.endpoint, str) else ""
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return base.rstrip("/") + "/responses"
+
+    def _analyze_pdf_via_files_api(
+        self,
+        pdf_path: str,
+        prompt_config: Dict[str, Any],
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Upload PDF via Files API then call Responses API to analyze it."""
+        auth_headers = {"Authorization": f"Bearer {self.api_key}"}
+        file_id: Optional[str] = None
+        try:
+            # Step 1: Upload PDF to Files API
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_bytes = pdf_file.read()
+
+            logging.info(f"Uploading PDF to xAI Files API: {pdf_path}")
+            upload_resp = requests.post(
+                self._files_url(),
+                headers=auth_headers,
+                files={"file": (os.path.basename(pdf_path), pdf_bytes, "application/pdf")},
+                data={"purpose": "assistants"},
+                timeout=60,
+            )
+            upload_resp.raise_for_status()
+            upload_data = upload_resp.json()
+            file_id = upload_data.get("id")
+            if not file_id:
+                logging.error(
+                    f"xAI Files API returned no file id. Response: {upload_resp.text[:300]}"
+                )
+                return None, {}
+            logging.info(f"xAI file uploaded, file_id={file_id}")
+
+            # Step 2: Call Responses API with file_id
+            system_prompt = prompt_config.get("system_prompt", "")
+            user_prompt = prompt_config.get("user_prompt", "")
+            full_user_text = (
+                f"{user_prompt}\n\nPlease analyze this PDF document:"
+                if user_prompt
+                else "Please analyze this PDF document:"
+            )
+
+            # Include system prompt as a leading input_text if present
+            content_blocks: List[Dict[str, Any]] = []
+            if system_prompt:
+                content_blocks.append({"type": "input_text", "text": system_prompt})
+            content_blocks.append({"type": "input_text", "text": full_user_text})
+            content_blocks.append({"type": "input_file", "file_id": file_id})
+
+            payload: Dict[str, Any] = {
+                "model": self.model,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": content_blocks,
+                    }
+                ],
+                "max_output_tokens": self.max_tokens,
+            }
+
+            resp_headers = dict(auth_headers)
+            resp_headers["Content-Type"] = "application/json"
+
+            logging.info(f"Calling xAI Responses API for model {self.model}")
+            response = requests.post(
+                self._responses_url(),
+                headers=resp_headers,
+                json=payload,
+                timeout=120,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            # Parse usage from Responses API shape
+            usage = result.get("usage", {})
+            cost_info = {
+                "prompt_tokens": usage.get("input_tokens", usage.get("prompt_tokens", 0)),
+                "completion_tokens": usage.get("output_tokens", usage.get("completion_tokens", 0)),
+                "total_tokens": usage.get("total_tokens", 0),
+            }
+            if cost_info["total_tokens"] == 0:
+                cost_info["total_tokens"] = (
+                    cost_info["prompt_tokens"] + cost_info["completion_tokens"]
+                )
+            self.token_costs.append(cost_info)
+
+            # Parse text from Responses API output shape:
+            # output[*].content[*].text  (type == "output_text")
+            suggested_name: Optional[str] = None
+            output = result.get("output", [])
+            for out_item in output:
+                content = out_item.get("content", [])
+                for block in content:
+                    text = block.get("text") or block.get("output_text")
+                    if text:
+                        suggested_name = str(text).strip()
+                        break
+                if suggested_name:
+                    break
+
+            if suggested_name is None:
+                # Fallback: look for any top-level text field
+                suggested_name = result.get("text") or result.get("output_text")
+                if suggested_name:
+                    suggested_name = str(suggested_name).strip()
+
+            if not suggested_name:
+                logging.error(
+                    f"xAI Responses API returned no text. Full response: {str(result)[:500]}"
+                )
+                return None, cost_info
+
+            logging.info(f"X.AI suggested filename: {suggested_name}")
+            return suggested_name, cost_info
+
+        except requests.HTTPError as e:
+            body = getattr(e.response, "text", "") if e.response is not None else ""
+            status = e.response.status_code if e.response is not None else "?"
+            logging.error(f"xAI Files/Responses API HTTP {status} error: {body[:300]}")
+            return None, {}
+        except Exception as e:
+            logging.error(f"xAI Files/Responses API error: {e}")
+            return None, {}
+        finally:
+            if file_id:
+                try:
+                    requests.delete(
+                        self._files_url() + f"/{file_id}",
+                        headers=auth_headers,
+                        timeout=15,
+                    )
+                    logging.debug(f"Deleted xAI file {file_id}")
+                except requests.RequestException as e:
+                    logging.warning(f"Could not delete xAI file {file_id}: {e}")
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -670,54 +819,34 @@ class XAIClient(BaseLLMClient):
                 logging.error("Prompt config is required")
                 return None, {}
 
+            # PDF path: use Files API + Responses API (chat/completions rejects PDFs)
+            if pdf_path and self.supports_pdf():
+                return self._analyze_pdf_via_files_api(pdf_path, prompt_config)
+
+            if pdf_path and not self.supports_pdf():
+                logging.error(
+                    f"Model {self.model} does not support PDF uploads. PDF support available in: grok-4-0709, grok-vision-beta"
+                )
+                return None, {}
+
+            if not document_text:
+                logging.error("Neither document text nor PDF path provided")
+                return None, {}
+
+            # Text path: use chat/completions as before
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             }
 
-            # Prepare message content based on available input
-            if document_text:
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
-                messages = [
-                    {
-                        "role": "system",
-                        "content": prompt_config.get("system_prompt", ""),
-                    },
-                    {"role": "user", "content": user_message},
-                ]
-            elif pdf_path and self.supports_pdf():
-                # For vision models, encode PDF as base64
-                pdf_base64 = self._encode_pdf_to_base64(pdf_path)
-                if not pdf_base64:
-                    return None, {}
-
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
-                messages = [
-                    {
-                        "role": "system",
-                        "content": prompt_config.get("system_prompt", ""),
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_message},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:application/pdf;base64,{pdf_base64}"
-                                },
-                            },
-                        ],
-                    },
-                ]
-            else:
-                if pdf_path and not self.supports_pdf():
-                    logging.error(
-                        f"Model {self.model} does not support PDF uploads. PDF support available in: grok-4-0709, grok-vision-beta"
-                    )
-                else:
-                    logging.error("Neither document text nor PDF path provided")
-                return None, {}
+            user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
+            messages = [
+                {
+                    "role": "system",
+                    "content": prompt_config.get("system_prompt", ""),
+                },
+                {"role": "user", "content": user_message},
+            ]
 
             payload = {
                 "model": self.model,

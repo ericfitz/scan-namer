@@ -483,6 +483,91 @@ class OpenAICompatProvider:
 class XAIProvider(OpenAICompatProvider):
     name = "xai"
 
+    def _files_url(self) -> str:
+        suffix = "/chat/completions"
+        base = self.api_endpoint
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return base.rstrip("/") + "/files"
+
+    def _responses_url(self) -> str:
+        suffix = "/chat/completions"
+        base = self.api_endpoint
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return base.rstrip("/") + "/responses"
+
+    def probe(self, model: str, kind: str) -> ProbeResult:
+        if kind != "pdf":
+            return super().probe(model, kind)
+
+        # PDF probe via Files API + Responses API.
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        file_id: Optional[str] = None
+        try:
+            pdf_bytes = base64.b64decode(MINIMAL_PDF_B64)
+            upload_resp = requests.post(
+                self._files_url(),
+                headers=headers,
+                files={"file": ("probe.pdf", pdf_bytes, "application/pdf")},
+                data={"purpose": "assistants"},
+                timeout=30,
+            )
+            upload_resp.raise_for_status()
+            file_id = upload_resp.json().get("id")
+            if not file_id:
+                return ProbeResult(
+                    succeeded=False,
+                    supports=None,
+                    error=f"Files API returned no id: {upload_resp.text[:200]}",
+                )
+
+            payload = {
+                "model": model,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "."},
+                            {"type": "input_file", "file_id": file_id},
+                        ],
+                    }
+                ],
+                "max_output_tokens": 1,
+            }
+            resp_headers = dict(headers)
+            resp_headers["Content-Type"] = "application/json"
+            response = requests.post(
+                self._responses_url(),
+                headers=resp_headers,
+                json=payload,
+                timeout=30,
+            )
+            response.raise_for_status()
+            return ProbeResult(succeeded=True, supports=True, error=None)
+        except requests.HTTPError as e:
+            body = getattr(e.response, "text", "") if e.response is not None else ""
+            if _is_capability_rejection(body, "pdf"):
+                return ProbeResult(succeeded=True, supports=False, error=None)
+            status = e.response.status_code if e.response is not None else "?"
+            return ProbeResult(
+                succeeded=False,
+                supports=None,
+                error=f"HTTP {status} {body[:200]}".strip(),
+            )
+        except requests.RequestException as e:
+            return ProbeResult(succeeded=False, supports=None, error=str(e))
+        finally:
+            if file_id:
+                try:
+                    requests.delete(
+                        self._files_url() + f"/{file_id}",
+                        headers=headers,
+                        timeout=15,
+                    )
+                except requests.RequestException:
+                    pass  # best-effort cleanup
+
 
 class LMStudioProvider(OpenAICompatProvider):
     name = "lmstudio"
