@@ -1,0 +1,22 @@
+#!/bin/bash
+# Update Models wrapper - uses uv to run update_models.py with deps.
+
+set -e
+
+if ! command -v uv &> /dev/null; then
+    echo "Error: uv is not installed. Please install it first:"
+    echo "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    exit 1
+fi
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# Source any present per-provider key files so SDKs that fall through to env
+# vars still work even when the user invokes update-models directly.
+for keyfile in "$ROOT"/ANTHROPIC_API_KEY "$ROOT"/OPENAI_API_KEY \
+               "$ROOT"/GOOGLE_API_KEY "$ROOT"/XAI_API_KEY \
+               "$ROOT"/LMSTUDIO_API_KEY; do
+    [ -f "$keyfile" ] && . "$keyfile"
+done
+
+exec uv run "$ROOT/update_models.py" "$@"
