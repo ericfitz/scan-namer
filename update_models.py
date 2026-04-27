@@ -104,6 +104,48 @@ def lookup_pdf_support(
     return None
 
 
+_OPENAI_NON_CHAT_PREFIXES = (
+    "text-embedding-",
+    "whisper-",
+    "tts-",
+    "dall-e-",
+    "omni-moderation-",
+    "babbage-",
+    "davinci-",
+)
+
+
+def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
+    """Keep only chat-capable model ids per provider rules. LMStudio and unknown
+    providers are unfiltered.
+    """
+    def _norm(mid: str) -> str:
+        # Some APIs return ids with a "models/" prefix (Google in particular)
+        return mid[len("models/"):] if mid.startswith("models/") else mid
+
+    if provider == "openai":
+        kept = []
+        for mid in model_ids:
+            base = _norm(mid)
+            if any(base.startswith(p) for p in _OPENAI_NON_CHAT_PREFIXES):
+                continue
+            if base.startswith("gpt-") or base.startswith("o"):
+                kept.append(mid)
+        return kept
+
+    if provider == "anthropic":
+        return [mid for mid in model_ids if _norm(mid).startswith("claude-")]
+
+    if provider == "google":
+        return [mid for mid in model_ids if _norm(mid).startswith("gemini-")]
+
+    if provider == "xai":
+        return [mid for mid in model_ids if _norm(mid).startswith("grok-")]
+
+    # lmstudio + anything unrecognized: pass through
+    return list(model_ids)
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_support in config.json"

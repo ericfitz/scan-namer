@@ -167,5 +167,52 @@ class LookupPdfSupportTests(unittest.TestCase):
         )
 
 
+class FilterChatModelsTests(unittest.TestCase):
+    def test_openai_keeps_gpt_and_o_models(self):
+        ids = [
+            "gpt-5-2025-08-07",
+            "gpt-4.1-2025-04-14",
+            "o3-mini",
+            "text-embedding-3-large",
+            "whisper-1",
+            "tts-1",
+            "dall-e-3",
+            "omni-moderation-latest",
+        ]
+        kept = update_models.filter_chat_models("openai", ids)
+        self.assertEqual(
+            sorted(kept),
+            sorted(["gpt-5-2025-08-07", "gpt-4.1-2025-04-14", "o3-mini"]),
+        )
+
+    def test_anthropic_keeps_only_claude(self):
+        ids = ["claude-sonnet-4-20250514", "non-claude-model"]
+        kept = update_models.filter_chat_models("anthropic", ids)
+        self.assertEqual(kept, ["claude-sonnet-4-20250514"])
+
+    def test_google_keeps_only_gemini(self):
+        ids = ["gemini-2.5-pro", "models/gemini-2.5-flash", "embedding-001"]
+        kept = update_models.filter_chat_models("google", ids)
+        # accepts the bare and the "models/" prefixed form
+        self.assertIn("gemini-2.5-pro", kept)
+        self.assertIn("models/gemini-2.5-flash", kept)
+        self.assertNotIn("embedding-001", kept)
+
+    def test_xai_keeps_only_grok(self):
+        ids = ["grok-4-0709", "grok-3", "not-grok"]
+        kept = update_models.filter_chat_models("xai", ids)
+        self.assertEqual(sorted(kept), ["grok-3", "grok-4-0709"])
+
+    def test_lmstudio_keeps_everything(self):
+        ids = ["google/gemma-4-31b", "anything-loaded-locally", "totally-custom"]
+        kept = update_models.filter_chat_models("lmstudio", ids)
+        self.assertEqual(sorted(kept), sorted(ids))
+
+    def test_unknown_provider_keeps_everything(self):
+        ids = ["a", "b"]
+        kept = update_models.filter_chat_models("never-heard-of-it", ids)
+        self.assertEqual(sorted(kept), sorted(ids))
+
+
 if __name__ == "__main__":
     unittest.main()
