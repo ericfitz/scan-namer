@@ -516,26 +516,41 @@ class OutputFormattingTests(unittest.TestCase):
 
     def test_model_line_success_true(self):
         line = update_models.format_model_line(
-            "claude-sonnet-4", supports_pdf=True, supports_vision=True
+            "claude-sonnet-4",
+            supports_pdf=True,
+            supports_vision=True,
+            pdf_strategy="inline_base64_document",
         )
         self.assertEqual(
-            line, "\t✓  Model: claude-sonnet-4  [ pdf: True | vision: True ]"
+            line,
+            "\t✓  Model: claude-sonnet-4  "
+            "[ pdf: True | vision: True | strategy: inline_base64_document ]",
         )
 
     def test_model_line_success_false(self):
         line = update_models.format_model_line(
-            "claude-haiku-3-5", supports_pdf=False, supports_vision=False
+            "claude-haiku-3-5",
+            supports_pdf=False,
+            supports_vision=False,
+            pdf_strategy="none",
         )
         self.assertEqual(
-            line, "\t✓  Model: claude-haiku-3-5  [ pdf: False | vision: False ]"
+            line,
+            "\t✓  Model: claude-haiku-3-5  "
+            "[ pdf: False | vision: False | strategy: none ]",
         )
 
     def test_model_line_mixed_capabilities(self):
         line = update_models.format_model_line(
-            "some-model", supports_pdf=False, supports_vision=True
+            "some-model",
+            supports_pdf=False,
+            supports_vision=True,
+            pdf_strategy="rasterize_to_images",
         )
         self.assertEqual(
-            line, "\t✓  Model: some-model  [ pdf: False | vision: True ]"
+            line,
+            "\t✓  Model: some-model  "
+            "[ pdf: False | vision: True | strategy: rasterize_to_images ]",
         )
 
     def test_model_line_error(self):
@@ -558,6 +573,61 @@ class OutputFormattingTests(unittest.TestCase):
         self.assertEqual(
             line, "❌ xai  Error retrieving list of models: HTTP 401 unauthorized"
         )
+
+
+class DerivePdfStrategyTests(unittest.TestCase):
+    def test_anthropic_pdf_uses_inline_base64(self):
+        self.assertEqual(
+            update_models.derive_pdf_strategy("anthropic", True, True),
+            "inline_base64_document",
+        )
+        # Anthropic chooses its native PDF transport even without vision flag.
+        self.assertEqual(
+            update_models.derive_pdf_strategy("anthropic", True, False),
+            "inline_base64_document",
+        )
+
+    def test_openai_and_xai_pdf_use_files_api(self):
+        for provider in ("openai", "xai"):
+            self.assertEqual(
+                update_models.derive_pdf_strategy(provider, True, True),
+                "files_api_responses",
+            )
+
+    def test_google_pdf_uses_genai_files_upload(self):
+        self.assertEqual(
+            update_models.derive_pdf_strategy("google", True, True),
+            "genai_files_upload",
+        )
+
+    def test_lmstudio_always_rasterizes_when_vision(self):
+        # LM Studio ignores the pdf flag because local servers are permissive.
+        self.assertEqual(
+            update_models.derive_pdf_strategy("lmstudio", True, True),
+            "rasterize_to_images",
+        )
+        self.assertEqual(
+            update_models.derive_pdf_strategy("lmstudio", False, True),
+            "rasterize_to_images",
+        )
+        self.assertEqual(
+            update_models.derive_pdf_strategy("lmstudio", True, False),
+            "none",
+        )
+
+    def test_no_pdf_with_vision_falls_back_to_rasterize(self):
+        for provider in ("openai", "anthropic", "google", "xai"):
+            self.assertEqual(
+                update_models.derive_pdf_strategy(provider, False, True),
+                "rasterize_to_images",
+            )
+
+    def test_no_pdf_no_vision_yields_none(self):
+        for provider in ("openai", "anthropic", "google", "xai", "lmstudio"):
+            self.assertEqual(
+                update_models.derive_pdf_strategy(provider, False, False),
+                "none",
+            )
 
 
 class MinimalPdfTests(unittest.TestCase):
@@ -833,14 +903,14 @@ class ProcessProviderTests(unittest.TestCase):
             ["claude-known", "claude-unknown"],
         )
         self.assertEqual(
-            updated["pdf_support"],
-            {"claude-known": True, "claude-unknown": False},
+            updated["pdf_strategy"],
+            {
+                "claude-known": "inline_base64_document",
+                "claude-unknown": "none",
+            },
         )
-        # Vision not in registry → defaults to False
-        self.assertEqual(
-            updated["vision_support"],
-            {"claude-known": False, "claude-unknown": False},
-        )
+        self.assertNotIn("pdf_support", updated)
+        self.assertNotIn("vision_support", updated)
 
     def test_probes_unknown_when_enabled(self):
         provider = FakeProvider(
@@ -872,8 +942,11 @@ class ProcessProviderTests(unittest.TestCase):
                 enable_probing=True,
             )
         self.assertTrue(summary.success)
-        self.assertEqual(updated["pdf_support"], {"claude-mystery": True})
-        self.assertEqual(updated["vision_support"], {"claude-mystery": True})
+        self.assertEqual(
+            updated["pdf_strategy"], {"claude-mystery": "inline_base64_document"}
+        )
+        self.assertNotIn("pdf_support", updated)
+        self.assertNotIn("vision_support", updated)
 
     def test_provider_failure_returns_unchanged_block_and_failure_summary(self):
         provider = FakeProvider(
@@ -968,10 +1041,15 @@ class ProcessProviderTests(unittest.TestCase):
                 enable_probing=False,
             )
         self.assertTrue(summary.success)
-        self.assertEqual(updated["pdf_support"], {"model-a": True, "model-b": False})
+        # Unknown provider falls through derive_pdf_strategy: pdf=True path
+        # returns "rasterize_to_images" when vision is also true; no vision/pdf
+        # → "none".
         self.assertEqual(
-            updated["vision_support"], {"model-a": True, "model-b": False}
+            updated["pdf_strategy"],
+            {"model-a": "rasterize_to_images", "model-b": "none"},
         )
+        self.assertNotIn("pdf_support", updated)
+        self.assertNotIn("vision_support", updated)
 
 
 class LMStudioProviderTests(unittest.TestCase):

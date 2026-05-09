@@ -611,21 +611,31 @@ class BaseLLMClient:
             logging.error(f"Error encoding PDF to base64: {e}")
             return ""
 
-    def supports_pdf(self) -> bool:
-        """Check if the current model supports PDF upload."""
-        pdf_support = self.config.get(f"llm.providers.{self.provider}.pdf_support", {})
-        if isinstance(pdf_support, dict):
-            return pdf_support.get(self.model, False)
-        return False
+    PDF_STRATEGIES = frozenset({
+        "inline_base64_document",
+        "files_api_responses",
+        "genai_files_upload",
+        "rasterize_to_images",
+        "none",
+    })
 
-    def supports_vision(self) -> bool:
-        """Check if the current model supports image (vision) input."""
-        vision_support = self.config.get(
-            f"llm.providers.{self.provider}.vision_support", {}
+    def pdf_strategy(self) -> str:
+        """Return the configured PDF-handling strategy for this provider+model.
+
+        Defaults to "none" if missing or unrecognized.
+        """
+        strategies = self.config.get(
+            f"llm.providers.{self.provider}.pdf_strategy", {}
         )
-        if isinstance(vision_support, dict):
-            return vision_support.get(self.model, False)
-        return False
+        if isinstance(strategies, dict):
+            value = strategies.get(self.model, "none")
+            if isinstance(value, str) and value in self.PDF_STRATEGIES:
+                return value
+        return "none"
+
+    def accepts_pdf(self) -> bool:
+        """True if this model has any non-text PDF strategy configured."""
+        return self.pdf_strategy() != "none"
 
     def _rasterize_pdf_to_pngs(self, pdf_path: str) -> List[bytes]:
         """Render the first `pdf.extraction_pages` pages of `pdf_path` to PNG bytes.
@@ -934,17 +944,21 @@ class XAIClient(BaseLLMClient):
                 logging.error("Prompt config is required")
                 return None, {}
 
-            # PDF path: use Files API + Responses API (chat/completions rejects PDFs)
-            if pdf_path and self.supports_pdf():
-                return self._analyze_pdf_via_files_api(pdf_path, prompt_config)
-
-            if pdf_path and self.supports_vision():
-                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
-
-            if pdf_path and not self.supports_pdf() and not self.supports_vision():
+            if pdf_path:
+                strategy = self.pdf_strategy()
+                if strategy == "files_api_responses":
+                    return self._analyze_pdf_via_files_api(pdf_path, prompt_config)
+                if strategy == "rasterize_to_images":
+                    return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
+                if strategy == "none":
+                    logging.error(
+                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Use a PDF-capable model or extract text first."
+                    )
+                    return None, {}
                 logging.error(
-                    f"Model {self.model} does not support PDF or image input. "
-                    f"Use a vision-capable model or extract text first."
+                    f"X.AI client does not implement pdf_strategy='{strategy}' "
+                    f"for model {self.model}."
                 )
                 return None, {}
 
@@ -1104,39 +1118,46 @@ class AnthropicClient(BaseLLMClient):
             if document_text:
                 user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
                 messages = [{"role": "user", "content": user_message}]
-            elif pdf_path and self.supports_pdf():
-                # Claude supports PDF uploads via base64 encoding
-                pdf_base64 = self._encode_pdf_to_base64(pdf_path)
-                if not pdf_base64:
-                    return None, {}
+            elif pdf_path:
+                strategy = self.pdf_strategy()
+                if strategy == "inline_base64_document":
+                    pdf_base64 = self._encode_pdf_to_base64(pdf_path)
+                    if not pdf_base64:
+                        return None, {}
 
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_message},
-                            {
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "application/pdf",
-                                    "data": pdf_base64,
+                    user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": user_message},
+                                {
+                                    "type": "document",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "application/pdf",
+                                        "data": pdf_base64,
+                                    },
                                 },
-                            },
-                        ],
-                    }
-                ]
-            elif pdf_path and self.supports_vision():
-                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
-            else:
-                if pdf_path and not self.supports_pdf() and not self.supports_vision():
+                            ],
+                        }
+                    ]
+                elif strategy == "rasterize_to_images":
+                    return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
+                elif strategy == "none":
                     logging.error(
-                        f"Model {self.model} does not support PDF or image input. "
-                        f"Use a vision-capable model or extract text first."
+                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Use a PDF-capable model or extract text first."
                     )
+                    return None, {}
                 else:
-                    logging.error("Neither document text nor PDF path provided")
+                    logging.error(
+                        f"Anthropic client does not implement pdf_strategy='{strategy}' "
+                        f"for model {self.model}."
+                    )
+                    return None, {}
+            else:
+                logging.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.messages.create(
@@ -1263,6 +1284,83 @@ class OpenAIClient(BaseLLMClient):
             logging.error(f"OpenAI rasterized-PDF analysis error: {e}")
             return None, {}
 
+    def _analyze_pdf_via_files_api(
+        self, pdf_path: str, prompt_config: Dict[str, Any]
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Upload PDF via Files API, then analyze via Responses API input_file."""
+        file_id: Optional[str] = None
+        try:
+            with open(pdf_path, "rb") as fh:
+                uploaded = self.client.files.create(file=fh, purpose="user_data")
+            file_id = getattr(uploaded, "id", None)
+            if not file_id:
+                logging.error("OpenAI Files API returned no file id")
+                return None, {}
+            logging.info(f"OpenAI file uploaded, file_id={file_id}")
+
+            system_prompt = prompt_config.get("system_prompt", "")
+            user_prompt = prompt_config.get("user_prompt", "")
+            full_user_text = (
+                f"{user_prompt}\n\nPlease analyze this PDF document:"
+                if user_prompt
+                else "Please analyze this PDF document:"
+            )
+
+            content_blocks: List[Dict[str, Any]] = []
+            if system_prompt:
+                content_blocks.append({"type": "input_text", "text": system_prompt})
+            content_blocks.append({"type": "input_text", "text": full_user_text})
+            content_blocks.append({"type": "input_file", "file_id": file_id})
+
+            response = self.client.responses.create(
+                model=self.model,
+                input=[{"role": "user", "content": content_blocks}],
+                max_output_tokens=self.max_tokens,
+            )
+
+            usage = getattr(response, "usage", None)
+            cost_info = {
+                "prompt_tokens": getattr(usage, "input_tokens", 0) or 0,
+                "completion_tokens": getattr(usage, "output_tokens", 0) or 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+            }
+            if cost_info["total_tokens"] == 0:
+                cost_info["total_tokens"] = (
+                    cost_info["prompt_tokens"] + cost_info["completion_tokens"]
+                )
+            self.token_costs.append(cost_info)
+
+            suggested_name: Optional[str] = getattr(response, "output_text", None)
+            if suggested_name is None:
+                output = getattr(response, "output", None) or []
+                for out_item in output:
+                    content = getattr(out_item, "content", None) or []
+                    for block in content:
+                        text = getattr(block, "text", None)
+                        if text:
+                            suggested_name = str(text)
+                            break
+                    if suggested_name:
+                        break
+
+            if not suggested_name:
+                logging.error("OpenAI Responses API returned no text")
+                return None, cost_info
+
+            suggested_name = suggested_name.strip()
+            logging.info(f"OpenAI suggested filename: {suggested_name}")
+            return suggested_name, cost_info
+        except Exception as e:
+            logging.error(f"OpenAI Files/Responses API error: {e}")
+            return None, {}
+        finally:
+            if file_id:
+                try:
+                    self.client.files.delete(file_id)
+                    logging.debug(f"Deleted OpenAI file {file_id}")
+                except Exception as e:
+                    logging.warning(f"Could not delete OpenAI file {file_id}: {e}")
+
     def analyze_document(
         self,
         document_text: Optional[str] = None,
@@ -1285,41 +1383,25 @@ class OpenAIClient(BaseLLMClient):
                     },
                     {"role": "user", "content": user_message},
                 ]
-            elif pdf_path and self.supports_pdf():
-                # Vision-enabled models support PDF uploads
-                pdf_base64 = self._encode_pdf_to_base64(pdf_path)
-                if not pdf_base64:
-                    return None, {}
-
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
-                messages = [
-                    {
-                        "role": "system",
-                        "content": prompt_config.get("system_prompt", ""),
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_message},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:application/pdf;base64,{pdf_base64}"
-                                },
-                            },
-                        ],
-                    },
-                ]
-            elif pdf_path and self.supports_vision():
-                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
-            else:
-                if pdf_path and not self.supports_pdf() and not self.supports_vision():
+            elif pdf_path:
+                strategy = self.pdf_strategy()
+                if strategy == "files_api_responses":
+                    return self._analyze_pdf_via_files_api(pdf_path, prompt_config)
+                if strategy == "rasterize_to_images":
+                    return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
+                if strategy == "none":
                     logging.error(
-                        f"Model {self.model} does not support PDF or image input. "
-                        f"Use a vision-capable model or extract text first."
+                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Use a PDF-capable model or extract text first."
                     )
-                else:
-                    logging.error("Neither document text nor PDF path provided")
+                    return None, {}
+                logging.error(
+                    f"OpenAI client does not implement pdf_strategy='{strategy}' "
+                    f"for model {self.model}."
+                )
+                return None, {}
+            else:
+                logging.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.chat.completions.create(
@@ -1512,25 +1594,32 @@ class GoogleClient(BaseLLMClient):
             if document_text:
                 full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}"
                 contents = [full_prompt]
-            elif pdf_path and self.supports_pdf():
-                # Upload PDF file using new SDK
-                try:
-                    uploaded_file = self.client.files.upload(file=pdf_path)
-                    full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
-                    contents = [full_prompt, uploaded_file]
-                except Exception as upload_error:
-                    logging.error(f"Failed to upload PDF: {upload_error}")
-                    return None, {}
-            elif pdf_path and self.supports_vision():
-                return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
-            else:
-                if pdf_path and not self.supports_pdf() and not self.supports_vision():
+            elif pdf_path:
+                strategy = self.pdf_strategy()
+                if strategy == "genai_files_upload":
+                    try:
+                        uploaded_file = self.client.files.upload(file=pdf_path)
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
+                        contents = [full_prompt, uploaded_file]
+                    except Exception as upload_error:
+                        logging.error(f"Failed to upload PDF: {upload_error}")
+                        return None, {}
+                elif strategy == "rasterize_to_images":
+                    return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
+                elif strategy == "none":
                     logging.error(
-                        f"Model {self.model} does not support PDF or image input. "
-                        f"Use a vision-capable model or extract text first."
+                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Use a PDF-capable model or extract text first."
                     )
+                    return None, {}
                 else:
-                    logging.error("Neither document text nor PDF path provided")
+                    logging.error(
+                        f"Google client does not implement pdf_strategy='{strategy}' "
+                        f"for model {self.model}."
+                    )
+                    return None, {}
+            else:
+                logging.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.models.generate_content(
@@ -1675,16 +1764,12 @@ class ScanNamer:
         )
 
         # Validate --no-ocr flag with model capabilities
-        if (
-            self.no_ocr
-            and not self.llm_client.supports_pdf()
-            and not self.llm_client.supports_vision()
-        ):
+        if self.no_ocr and not self.llm_client.accepts_pdf():
             logging.warning(
-                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which does not support PDF or image input."
+                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which has pdf_strategy='none'."
             )
             logging.warning(
-                "PDF fallback will not work. Consider using a vision-capable model."
+                "PDF fallback will not work. Consider using a PDF-capable model."
             )
             self._print_pdf_capable_models()
 
@@ -1771,8 +1856,10 @@ class ScanNamer:
     def _print_pdf_capable_models(self) -> None:
         """Print models that support PDF uploads for current provider."""
         provider = self.llm_client.provider
-        pdf_support = self.config.get(f"llm.providers.{provider}.pdf_support", {})
-        capable_models = [model for model, supports in pdf_support.items() if supports]
+        strategies = self.config.get(f"llm.providers.{provider}.pdf_strategy", {})
+        capable_models = [
+            model for model, strat in strategies.items() if strat and strat != "none"
+        ]
 
         if capable_models:
             logging.info(
@@ -2162,7 +2249,7 @@ def main() -> None:
 
                 models = provider_config.get("available_models", [])
                 default_model = provider_config.get("default_model")
-                pdf_support = provider_config.get("pdf_support", {})
+                strategies = provider_config.get("pdf_strategy", {})
 
                 for model in models:
                     markers = []
@@ -2170,8 +2257,9 @@ def main() -> None:
                         markers.append("current")
                     if model == default_model:
                         markers.append("default")
-                    if pdf_support.get(model, False):
-                        markers.append("PDF")
+                    strat = strategies.get(model, "none")
+                    if strat and strat != "none":
+                        markers.append(f"PDF: {strat}")
 
                     marker_str = f" ({', '.join(markers)})" if markers else ""
                     print(f"  - {model}{marker_str}")

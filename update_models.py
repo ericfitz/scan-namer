@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Update Models - Refresh available_models and pdf_support in config.json by
-querying each LLM provider for currently-available models. PDF capability is
-looked up in the LiteLLM model registry; unrecognized models can optionally
-be probed with a tiny PDF.
+Update Models - Refresh available_models and pdf_strategy in config.json by
+querying each LLM provider for currently-available models. PDF and vision
+capability are looked up in the LiteLLM model registry; unrecognized models
+can optionally be probed with a tiny PDF/PNG. The (pdf, vision) capability
+pair is then mapped to a per-provider pdf_strategy value that the runtime
+uses to dispatch PDF requests.
 """
 # /// script
 # requires-python = ">=3.8"
@@ -308,14 +310,42 @@ def format_model_line(
     model: str,
     supports_pdf: Optional[bool] = None,
     supports_vision: Optional[bool] = None,
+    pdf_strategy: Optional[str] = None,
     error: Optional[str] = None,
 ) -> str:
     if error is not None:
         return f"\t{ASCII_X}  Model: {model}  [ Error: {error} ]"
     return (
         f"\t{ASCII_CHECK}  Model: {model}  "
-        f"[ pdf: {supports_pdf} | vision: {supports_vision} ]"
+        f"[ pdf: {supports_pdf} | vision: {supports_vision} | strategy: {pdf_strategy} ]"
     )
+
+
+# Maps (provider, pdf_supported, vision_supported) → pdf_strategy value.
+# - When the model accepts PDF natively, prefer the provider's first-class
+#   transport (Anthropic inline base64, OpenAI/xAI Files+Responses, Google
+#   genai upload).
+# - When PDF isn't accepted but vision is, fall back to rasterizing pages.
+# - LM Studio is treated as image-only regardless of any "pdf" flag, because
+#   local OpenAI-compatible servers tend to 200 on bogus PDF payloads and
+#   `pdf_support` probes are not reliable.
+def derive_pdf_strategy(
+    provider: str, supports_pdf: bool, supports_vision: bool
+) -> str:
+    if provider == "lmstudio":
+        return "rasterize_to_images" if supports_vision else "none"
+    if supports_pdf:
+        if provider == "anthropic":
+            return "inline_base64_document"
+        if provider in ("openai", "xai"):
+            return "files_api_responses"
+        if provider == "google":
+            return "genai_files_upload"
+        # Unknown provider with PDF support: best-effort rasterize.
+        return "rasterize_to_images" if supports_vision else "none"
+    if supports_vision:
+        return "rasterize_to_images"
+    return "none"
 
 
 def format_provider_summary(
@@ -792,7 +822,7 @@ class GoogleProvider:
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Update available_models and pdf_support in config.json"
+        description="Update available_models and pdf_strategy in config.json"
     )
     parser.add_argument(
         "--provider",
@@ -854,7 +884,7 @@ def process_provider(
     """Drive one provider end-to-end. Returns (new_block, summary).
 
     On any failure to list models, returns the original block unchanged and a
-    failed summary; otherwise rebuilds available_models and pdf_support from
+    failed summary; otherwise rebuilds available_models and pdf_strategy from
     the provider's API response.
     """
     print(format_header(provider_name, provider_block.get("api_endpoint", "")))
@@ -869,8 +899,7 @@ def process_provider(
 
     filtered = sorted(set(filter_chat_models(provider_name, raw_ids)))
 
-    new_pdf_support: Dict[str, bool] = {}
-    new_vision_support: Dict[str, bool] = {}
+    new_pdf_strategy: Dict[str, str] = {}
     kept_models: List[str] = []
 
     for mid in filtered:
@@ -902,17 +931,24 @@ def process_provider(
         else:
             vision_value = False
 
+        strategy = derive_pdf_strategy(
+            provider_name, bool(pdf_value), bool(vision_value)
+        )
         print(format_model_line(
-            mid, supports_pdf=pdf_value, supports_vision=vision_value
+            mid,
+            supports_pdf=pdf_value,
+            supports_vision=vision_value,
+            pdf_strategy=strategy,
         ))
         kept_models.append(mid)
-        new_pdf_support[mid] = pdf_value
-        new_vision_support[mid] = vision_value
+        new_pdf_strategy[mid] = strategy
 
     new_block = copy.deepcopy(provider_block)
     new_block["available_models"] = kept_models
-    new_block["pdf_support"] = new_pdf_support
-    new_block["vision_support"] = new_vision_support
+    new_block["pdf_strategy"] = new_pdf_strategy
+    # Drop legacy keys if present from older configs.
+    new_block.pop("pdf_support", None)
+    new_block.pop("vision_support", None)
 
     current_default = new_block.get("default_model")
     if current_default not in kept_models:
