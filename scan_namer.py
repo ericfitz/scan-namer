@@ -1702,39 +1702,50 @@ class LLMClientFactory:
         max_tokens: Optional[int] = None,
     ) -> BaseLLMClient:
         """Create appropriate LLM client based on provider."""
+        provider_explicit = provider is not None
+
+        # Resolve provider: CLI flag wins, else config default.
         if provider is None:
             provider = config.get("llm.provider", "xai")
 
-        if model is None:
-            # Try to get model from config, fallback to provider default
-            model = config.get("llm.model")
-            if not model:
-                model = config.get(f"llm.providers.{provider}.default_model")
-
-        # Ensure model is not None
-        if model is None:
-            logging.error("No model specified and no default model found")
+        # Validate provider exists before resolving its model.
+        providers_config = config.get("llm.providers", {})
+        if not isinstance(providers_config, dict) or provider not in providers_config:
+            available = list(providers_config) if isinstance(providers_config, dict) else []
+            logging.error(f"Unknown provider '{provider}'. Available: {available}")
             sys.exit(1)
 
-        # Validate provider exists
-        providers_config = config.get("llm.providers", {})
-        if isinstance(providers_config, dict) and provider not in providers_config:
+        # Resolve model:
+        #   --model            -> use it
+        #   --provider (no -m) -> that provider's default_model
+        #   neither            -> config.llm.model, else provider default_model
+        provider_default = config.get(f"llm.providers.{provider}.default_model")
+        if model is not None:
+            effective_model = model
+        elif provider_explicit:
+            effective_model = provider_default
+        else:
+            effective_model = config.get("llm.model") or provider_default
+        model = effective_model
+
+        if not model:
             logging.error(
-                f"Unknown provider: {provider}. Available: {list(providers_config.keys())}"
+                f"Provider '{provider}' has no default_model configured in config.json"
             )
             sys.exit(1)
 
-        # Validate model is available for provider
+        # Validate the resolved model is allowed for this provider (hard fail).
         available_models = config.get(f"llm.providers.{provider}.available_models", [])
         if (
             isinstance(available_models, list)
             and available_models
             and model not in available_models
         ):
-            logging.warning(
-                f"Model '{model}' not in available models for {provider}: {available_models}"
+            logging.error(
+                f"Model '{model}' is not valid for provider '{provider}'. "
+                f"Available models for '{provider}': {available_models}"
             )
-            logging.warning("Proceeding anyway - model list may be outdated")
+            sys.exit(1)
 
         logging.info(f"Using {provider} provider with model: {model}")
 
@@ -1784,12 +1795,14 @@ class ScanNamer:
 
         self._setup_logging()
 
-        # Initialize components
-        self.drive_manager = GoogleDriveManager(self.config)
-        self.pdf_processor = PDFProcessor(self.config)
+        # Initialize components.
+        # Build the LLM client first so invalid --provider/--model fail fast,
+        # before the eager Google Drive OAuth round-trip.
         self.llm_client = LLMClientFactory.create_client(
             self.config, provider=provider, model=model, max_tokens=max_tokens
         )
+        self.pdf_processor = PDFProcessor(self.config)
+        self.drive_manager = GoogleDriveManager(self.config)
 
         # Validate --no-ocr flag with model capabilities
         if self.no_ocr and not self.llm_client.accepts_pdf():
