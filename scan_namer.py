@@ -318,6 +318,31 @@ class GoogleDriveManager:
             print("Invalid input or cancelled")
             return None
 
+    def resolve_folder(self, name: str) -> Optional[str]:
+        """Resolve a root folder by name (case-insensitive).
+
+        Returns the folder id on a single unambiguous match. On no match or
+        multiple matches, logs a warning and returns None so the caller can
+        fall back to the interactive selection menu.
+        """
+        folders = self.list_folders()
+        matches = [f for f in folders if f.get("name", "").lower() == name.lower()]
+        if len(matches) == 1:
+            selected = matches[0]
+            logging.info(
+                f"Using configured folder: {selected['name']} (ID: {selected['id']})"
+            )
+            return selected["id"]
+        if not matches:
+            logging.warning(
+                f"Folder '{name}' not found in Google Drive root; showing selection menu"
+            )
+        else:
+            logging.warning(
+                f"Multiple folders named '{name}' found; showing selection menu"
+            )
+        return None
+
     def list_pdfs(self, folder_id: str) -> List[Dict[str, Any]]:
         """List PDF files in a Google Drive folder."""
         if self.service is None:
@@ -1819,12 +1844,14 @@ class ScanNamer:
         max_tokens: Optional[int] = None,
         enable_ocr_embedding: bool = False,
         download_dir: Optional[str] = None,
+        folder_name: Optional[str] = None,
     ):
         self.config = ConfigManager(config_file)
         self.prompts = PromptManager()
         self.dry_run = dry_run
         self.no_ocr = no_ocr
         self.enable_ocr_embedding = enable_ocr_embedding
+        self.folder_name = folder_name
 
         if download_dir:
             self.download_dir = os.path.expanduser(download_dir)
@@ -2173,8 +2200,16 @@ class ScanNamer:
             if self.dry_run:
                 logging.info("Running in DRY RUN mode - no files will be renamed")
 
-            # Select folder
-            folder_id = self.drive_manager.select_folder()
+            # Resolve folder: CLI --folder > config google_drive.folder_name.
+            # A unique name match skips the menu; otherwise fall back to it.
+            effective_folder_name = self.folder_name or self.config.get(
+                "google_drive.folder_name"
+            )
+            folder_id = None
+            if effective_folder_name:
+                folder_id = self.drive_manager.resolve_folder(effective_folder_name)
+            if not folder_id:
+                folder_id = self.drive_manager.select_folder()
             if not folder_id:
                 logging.error("No folder selected")
                 return
@@ -2297,6 +2332,11 @@ def main() -> None:
         metavar="DIR",
         help="Download renamed files to a local directory (default: ~/Downloads)",
     )
+    parser.add_argument(
+        "--folder",
+        help="Google Drive folder name to use (overrides config google_drive.folder_name); skips the menu when uniquely matched",
+        metavar="NAME",
+    )
 
     args = parser.parse_args()
 
@@ -2373,6 +2413,7 @@ def main() -> None:
             max_tokens=args.tokens,
             enable_ocr_embedding=args.enable_ocr_embedding,
             download_dir=args.download,
+            folder_name=args.folder,
         )
         app.run()
     except KeyboardInterrupt:

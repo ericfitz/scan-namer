@@ -181,6 +181,7 @@
   "google_drive": {
     "credentials_file": "credentials.json",
     "token_file": "token.json",
+    "folder_name": "",
     "scopes": [
       "https://www.googleapis.com/auth/drive"
     ]
