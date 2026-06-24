@@ -6,14 +6,14 @@ using LLM analysis of document content.
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "google-auth-oauthlib==1.3.1",
-#     "google-auth==2.49.2",
-#     "google-api-python-client==2.194.0",
+#     "google-auth-oauthlib==1.4.0",
+#     "google-auth==2.53.0",
+#     "google-api-python-client==2.196.0",
 #     "google-genai>=0.1.0",
 #     "anthropic>=0.7.0",
 #     "openai>=1.0.0",
 #     "PyPDF2==3.0.1",
-#     "requests==2.33.1",
+#     "requests>=2.31.0",
 #     "python-dotenv==1.2.2",
 #     "types-requests",
 #     "pytesseract==0.3.13",
@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import os
+import socket
 import sys
 import tempfile
 
@@ -47,6 +48,33 @@ import PyPDF2
 from dotenv import load_dotenv
 import pytesseract
 from pdf2image import convert_from_path
+
+
+def prefer_ipv4() -> None:
+    """Reorder DNS results so IPv4 addresses are tried before IPv6.
+
+    On networks that advertise IPv6 (AAAA records resolve) but have no working
+    IPv6 route, Python's socket layer tries each IPv6 address first and blocks
+    on connect until the per-address TCP timeout expires — turning a sub-second
+    request into minutes. Unlike curl (which uses Happy Eyeballs to race the
+    families in parallel), CPython connects to getaddrinfo results strictly in
+    order. Sorting IPv4 first makes every HTTP client in this process (requests,
+    the Google API client, and the provider SDKs alike) connect over IPv4
+    immediately, while leaving IPv6 as a fallback so IPv6-only hosts still
+    resolve.
+
+    Idempotent: re-applying does not stack wrappers.
+    """
+    if getattr(socket.getaddrinfo, "_ipv4_preferred", False):
+        return
+    _orig_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_first(*args, **kwargs):
+        results = _orig_getaddrinfo(*args, **kwargs)
+        return sorted(results, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+
+    _ipv4_first._ipv4_preferred = True  # type: ignore[attr-defined]
+    socket.getaddrinfo = _ipv4_first  # type: ignore[assignment]
 
 
 class ConfigManager:
@@ -2155,6 +2183,9 @@ class ScanNamer:
 
 def main() -> None:
     """Entry point."""
+    # Avoid multi-minute stalls on networks with broken IPv6 routing (see
+    # prefer_ipv4 docstring). Affects Google Drive calls and every LLM provider.
+    prefer_ipv4()
     load_dotenv()  # Load environment variables from .env file
 
     parser = argparse.ArgumentParser(
