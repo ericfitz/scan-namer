@@ -1,6 +1,7 @@
 """Unit tests for update_models.py pure helpers."""
 import base64
 import os
+import socket
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,29 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir))
 
 import update_models
+
+
+class PreferIPv4Tests(unittest.TestCase):
+    def setUp(self):
+        self._orig = socket.getaddrinfo
+        self.addCleanup(setattr, socket, "getaddrinfo", self._orig)
+
+    def test_reorders_ipv4_before_ipv6(self):
+        v6 = (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 443, 0, 0))
+        v4 = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", 443))
+        # Use a plain function (not a Mock) so the idempotency guard's attribute
+        # lookup behaves like it does against the real builtin getaddrinfo.
+        socket.getaddrinfo = lambda *a, **k: [v6, v4]
+        update_models.prefer_ipv4()
+        ordered = socket.getaddrinfo("example.com", 443)
+        self.assertEqual(ordered[0][0], socket.AF_INET)
+        self.assertEqual(ordered[1][0], socket.AF_INET6)
+
+    def test_is_idempotent(self):
+        update_models.prefer_ipv4()
+        once = socket.getaddrinfo
+        update_models.prefer_ipv4()
+        self.assertIs(socket.getaddrinfo, once)
 
 
 class ResolveApiKeyTests(unittest.TestCase):
@@ -843,6 +867,73 @@ class XAIProviderTests(unittest.TestCase):
 
     def test_name_is_xai(self):
         self.assertEqual(self._make_client().name, "xai")
+
+
+class GoogleProviderListModelsTests(unittest.TestCase):
+    def _make_client(self, api_key="gkey"):
+        return update_models.GoogleProvider(
+            api_endpoint="https://generativelanguage.googleapis.com",
+            api_key=api_key,
+        )
+
+    def test_list_models_uses_rest_and_strips_prefix(self):
+        client = self._make_client()
+        body = {
+            "models": [
+                {"name": "models/gemini-2.5-pro"},
+                {"name": "models/gemini-2.5-flash"},
+            ]
+        }
+        fake_response = mock.Mock(status_code=200)
+        fake_response.json.return_value = body
+        fake_response.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ) as g:
+            result = client.list_models()
+        self.assertEqual(result, ["gemini-2.5-pro", "gemini-2.5-flash"])
+        g.assert_called_once()
+        called_url = g.call_args[0][0]
+        self.assertEqual(
+            called_url,
+            "https://generativelanguage.googleapis.com/v1beta/models",
+        )
+        # Key travels in the header, not the URL.
+        self.assertEqual(
+            g.call_args.kwargs["headers"]["x-goog-api-key"], "gkey"
+        )
+        self.assertEqual(g.call_args.kwargs["params"]["pageSize"], 1000)
+
+    def test_list_models_follows_pagination(self):
+        client = self._make_client()
+        page1 = mock.Mock(status_code=200)
+        page1.json.return_value = {
+            "models": [{"name": "models/gemini-a"}],
+            "nextPageToken": "tok",
+        }
+        page1.raise_for_status.return_value = None
+        page2 = mock.Mock(status_code=200)
+        page2.json.return_value = {"models": [{"name": "models/gemini-b"}]}
+        page2.raise_for_status.return_value = None
+        with mock.patch(
+            "update_models.requests.get", side_effect=[page1, page2]
+        ) as g:
+            result = client.list_models()
+        self.assertEqual(result, ["gemini-a", "gemini-b"])
+        self.assertEqual(g.call_count, 2)
+        self.assertEqual(g.call_args_list[1].kwargs["params"]["pageToken"], "tok")
+
+    def test_list_models_raises_on_http_error(self):
+        client = self._make_client()
+        fake_response = mock.Mock(status_code=500)
+        fake_response.raise_for_status.side_effect = update_models.requests.HTTPError(
+            "500 Server Error", response=fake_response
+        )
+        with mock.patch(
+            "update_models.requests.get", return_value=fake_response
+        ):
+            with self.assertRaises(update_models.requests.HTTPError):
+                client.list_models()
 
 
 class FakeProvider:

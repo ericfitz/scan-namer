@@ -10,7 +10,7 @@ uses to dispatch PDF requests.
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "requests==2.33.1",
+#     "requests>=2.31.0",
 #     "anthropic>=0.7.0",
 #     "openai>=1.0.0",
 #     "google-genai>=0.1.0",
@@ -24,11 +24,38 @@ import json
 import logging
 import os
 import re
+import socket
 import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import requests
+
+
+def prefer_ipv4() -> None:
+    """Reorder DNS results so IPv4 addresses are tried before IPv6.
+
+    On networks that advertise IPv6 (AAAA records resolve) but have no working
+    IPv6 route, Python's socket layer tries each IPv6 address first and blocks
+    on connect until the per-address TCP timeout expires — turning a sub-second
+    request into minutes. Unlike curl (which uses Happy Eyeballs to race the
+    families in parallel), CPython connects to getaddrinfo results strictly in
+    order. Sorting IPv4 first makes every HTTP client in this process (requests
+    and the provider SDKs alike) connect over IPv4 immediately, while leaving
+    IPv6 as a fallback so IPv6-only hosts still resolve.
+
+    Idempotent: re-applying does not stack wrappers.
+    """
+    if getattr(socket.getaddrinfo, "_ipv4_preferred", False):
+        return
+    _orig_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_first(*args: Any, **kwargs: Any):
+        results = _orig_getaddrinfo(*args, **kwargs)
+        return sorted(results, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+
+    _ipv4_first._ipv4_preferred = True  # type: ignore[attr-defined]
+    socket.getaddrinfo = _ipv4_first  # type: ignore[assignment]
 
 
 LITELLM_REGISTRY_URL = (
@@ -778,16 +805,44 @@ class GoogleProvider:
             return genai.Client(api_key=self.api_key)
         return genai.Client()
 
+    # The genai SDK's models.list() pager is pathologically slow — minutes for a
+    # few dozen models, because each page fetch stalls on credential-discovery
+    # round trips. Hit the REST endpoint directly instead: it returns the full
+    # list in a single request and uses `requests`, which is already a
+    # dependency (and avoids importing the heavy SDK in the default path).
     def list_models(self) -> List[str]:
-        client = self._client()
+        base = self.api_endpoint.rstrip("/")
+        url = f"{base}/v1beta/models"
+        api_key = (
+            self.api_key
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+        )
+        headers = {"x-goog-api-key": api_key} if api_key else {}
+
         ids: List[str] = []
-        for entry in client.models.list():
-            mid = getattr(entry, "name", None) or getattr(entry, "id", None)
-            if not mid:
-                continue
-            if mid.startswith("models/"):
-                mid = mid[len("models/"):]
-            ids.append(mid)
+        page_token: Optional[str] = None
+        while True:
+            params: Dict[str, Any] = {"pageSize": 1000}
+            if page_token:
+                params["pageToken"] = page_token
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict):
+                break
+            for entry in data.get("models", []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                mid = entry.get("name") or entry.get("id")
+                if not mid:
+                    continue
+                if mid.startswith("models/"):
+                    mid = mid[len("models/"):]
+                ids.append(mid)
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
         return ids
 
     def probe(self, model: str, kind: str) -> ProbeResult:
@@ -959,6 +1014,9 @@ def process_provider(
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
+    # Avoid multi-minute stalls on networks with broken IPv6 routing (see
+    # prefer_ipv4 docstring). Affects the registry fetch and every provider.
+    prefer_ipv4()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
