@@ -3,25 +3,6 @@
 Scan Namer - Automatically rename scanned documents in Google Drive
 using LLM analysis of document content.
 """
-# /// script
-# requires-python = ">=3.8"
-# dependencies = [
-#     "google-auth-oauthlib==1.4.0",
-#     "google-auth==2.53.0",
-#     "google-api-python-client==2.196.0",
-#     "google-genai>=0.1.0",
-#     "anthropic>=0.7.0",
-#     "openai>=1.0.0",
-#     "PyPDF2==3.0.1",
-#     "requests>=2.31.0",
-#     "python-dotenv==1.2.2",
-#     "types-requests",
-#     "pytesseract==0.3.13",
-#     "pdf2image==1.17.0",
-#     "Pillow>=10.0.0",
-# ]
-# ///
-
 import argparse
 import io
 import json

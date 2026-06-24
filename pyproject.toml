@@ -1,0 +1,29 @@
+[project]
+name = "scan-namer"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "google-auth-oauthlib==1.4.0",
+    "google-auth==2.53.0",
+    "google-api-python-client==2.196.0",
+    "google-genai>=0.1.0",
+    "anthropic>=0.7.0",
+    "openai>=1.0.0",
+    "PyPDF2==3.0.1",
+    "requests>=2.31.0",
+    "python-dotenv==1.2.2",
+    "types-requests",
+    "pytesseract==0.3.13",
+    "pdf2image==1.17.0",
+    "Pillow>=10.0.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
