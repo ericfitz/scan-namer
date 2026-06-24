@@ -105,6 +105,14 @@ By default, scan-namer presents an interactive menu to choose which Google Drive
 }
 ```
 
+## testing
+
+A pytest unit suite covers secret resolution, provider/model resolution, config loading, Drive folder selection, filename validation, and PDF/URL helpers. No network access or API keys are needed.
+
+```bash
+uv run pytest -q   # ~142 tests, ~0.1 s
+```
+
 ## alternative uses
 With small modifications, you could point this to any document store you want, and let it rename your documents more meaningfully. The multi-provider LLM support makes it adaptable to different AI services and use cases.
 

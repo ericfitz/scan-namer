@@ -154,7 +154,8 @@ All dependencies are automatically managed by uv when running the script. The Go
 ## Development Notes
 
 ### Testing Approach
-- No automated testing framework - relies on manual testing with real Google Drive and LLM APIs
+- Unit tests live in `tests/`; run with `uv run pytest -q` (142 tests, ~0.1 s, no network required)
+- Integration/live-API testing still relies on manual runs with real Google Drive and LLM APIs — always use `--dry-run` to avoid unintended renames
 - Always use `--dry-run` flag when testing to avoid unintended file renames
 - Test text extraction and PDF upload modes separately
 - Verify model capabilities with `--list-models` before testing specific providers
