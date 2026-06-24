@@ -9,12 +9,16 @@
         "api_endpoint": "http://localhost:1234/v1/chat/completions",
         "api_key_env": "LMSTUDIO_API_KEY",
         "available_models": [
+          "gemma-4-31b-it-mlx",
           "google/gemma-4-31b",
-          "qwen/qwen3.6-35b-a3b"
+          "qwen/qwen3.6-35b-a3b",
+          "qwen3.6-35b-a3b-mlx"
         ],
         "pdf_strategy": {
-          "google/gemma-4-31b": "rasterize_to_images",
-          "qwen/qwen3.6-35b-a3b": "rasterize_to_images"
+          "gemma-4-31b-it-mlx": "none",
+          "google/gemma-4-31b": "none",
+          "qwen/qwen3.6-35b-a3b": "none",
+          "qwen3.6-35b-a3b-mlx": "none"
         },
         "default_model": "google/gemma-4-31b"
       },
@@ -22,24 +26,24 @@
         "api_endpoint": "https://api.anthropic.com/v1",
         "api_key_env": "ANTHROPIC_API_KEY",
         "available_models": [
+          "claude-fable-5",
           "claude-haiku-4-5-20251001",
           "claude-opus-4-1-20250805",
-          "claude-opus-4-20250514",
           "claude-opus-4-5-20251101",
           "claude-opus-4-6",
           "claude-opus-4-7",
-          "claude-sonnet-4-20250514",
+          "claude-opus-4-8",
           "claude-sonnet-4-5-20250929",
           "claude-sonnet-4-6"
         ],
         "pdf_strategy": {
+          "claude-fable-5": "inline_base64_document",
           "claude-haiku-4-5-20251001": "inline_base64_document",
           "claude-opus-4-1-20250805": "inline_base64_document",
-          "claude-opus-4-20250514": "inline_base64_document",
           "claude-opus-4-5-20251101": "inline_base64_document",
           "claude-opus-4-6": "inline_base64_document",
           "claude-opus-4-7": "inline_base64_document",
-          "claude-sonnet-4-20250514": "inline_base64_document",
+          "claude-opus-4-8": "inline_base64_document",
           "claude-sonnet-4-5-20250929": "inline_base64_document",
           "claude-sonnet-4-6": "inline_base64_document"
         },
@@ -59,6 +63,8 @@
           "gemini-3.1-flash-lite",
           "gemini-3.1-flash-lite-preview",
           "gemini-3.1-pro-preview",
+          "gemini-3.5-flash",
+          "gemini-3.5-live-translate-preview",
           "gemini-flash-latest",
           "gemini-flash-lite-latest",
           "gemini-pro-latest"
@@ -69,8 +75,11 @@
           "gemini-2.5-pro": "genai_files_upload",
           "gemini-3-flash-preview": "genai_files_upload",
           "gemini-3-pro-preview": "genai_files_upload",
+          "gemini-3.1-flash-lite": "genai_files_upload",
           "gemini-3.1-flash-lite-preview": "genai_files_upload",
           "gemini-3.1-pro-preview": "genai_files_upload",
+          "gemini-3.5-flash": "genai_files_upload",
+          "gemini-3.5-live-translate-preview": "none",
           "gemini-flash-latest": "genai_files_upload",
           "gemini-flash-lite-latest": "genai_files_upload",
           "gemini-pro-latest": "genai_files_upload"
@@ -144,25 +153,18 @@
         "api_endpoint": "https://api.x.ai/v1/chat/completions",
         "api_key_env": "XAI_API_KEY",
         "available_models": [
-          "grok-4-0709",
-          "grok-4-1-fast-non-reasoning",
-          "grok-4-1-fast-reasoning",
-          "grok-4-fast-non-reasoning",
-          "grok-4-fast-reasoning",
           "grok-4.20-0309-non-reasoning",
           "grok-4.20-0309-reasoning",
-          "grok-4.3"
+          "grok-4.3",
+          "grok-build-0.1"
         ],
         "pdf_strategy": {
-          "grok-4-0709": "files_api_responses",
-          "grok-4-1-fast-non-reasoning": "files_api_responses",
-          "grok-4-1-fast-reasoning": "files_api_responses",
-          "grok-4-fast-non-reasoning": "files_api_responses",
-          "grok-4-fast-reasoning": "files_api_responses",
-          "grok-4.20-0309-non-reasoning": "files_api_responses",
-          "grok-4.20-0309-reasoning": "files_api_responses"
+          "grok-4.20-0309-non-reasoning": "none",
+          "grok-4.20-0309-reasoning": "rasterize_to_images",
+          "grok-4.3": "rasterize_to_images",
+          "grok-build-0.1": "none"
         },
-        "default_model": "grok-4-0709"
+        "default_model": "grok-4.20-0309-non-reasoning"
       }
     }
   },
