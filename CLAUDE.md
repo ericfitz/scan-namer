@@ -110,18 +110,20 @@ The application follows object-oriented design with clear separation of concerns
 
 ## Python Project Structure
 
-Uses uv for package management with inline script metadata. Dependencies are declared in the Python script header and include:
+Uses uv for package management. Dependencies are declared in `pyproject.toml` and include:
 - Google API libraries (Drive, OAuth, modern Google Gen AI SDK)
 - LLM provider SDKs (anthropic, openai, requests for X.AI)
 - PDF processing (PyPDF2)
 - Utilities (python-dotenv, base64, logging)
 
-All dependencies are automatically managed by uv when running the script. The Google integration uses the latest Google Gen AI SDK (google-genai) instead of the deprecated Vertex AI SDK, eliminating deprecation warnings.
+All dependencies are automatically managed by uv from `pyproject.toml` when running the app or the test suite. The Google integration uses the latest Google Gen AI SDK (google-genai) instead of the deprecated Vertex AI SDK, eliminating deprecation warnings. (`update_models.py` remains a standalone PEP 723 inline-metadata script.)
 
 ## Project Files
 
-- `scan_namer.py`: Main application with inline uv dependencies and multi-provider LLM support
+- `scan_namer.py`: Main application with multi-provider LLM support
 - `scan-namer`: Bash wrapper script for easy execution
+- `pyproject.toml`: Project metadata, dependencies, and pytest configuration
+- `tests/`: pytest unit suite (run with `uv run pytest`)
 - `config.json`: Application configuration including provider settings, model lists, PDF support flags
 - `prompts.json`: LLM prompt templates for document analysis
 - `.env.example`: Template for environment variables with PDF capability indicators
