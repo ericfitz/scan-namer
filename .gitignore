@@ -216,5 +216,7 @@ credentials.json
 token.json
 *.env
 
-# API key files (sourced by wrapper scripts; contain secrets)
+# Secret/credential files sourced from the application directory when the
+# matching env var is unset (see BaseLLMClient._resolve_secret)
 *_API_KEY
+GOOGLE_PROJECT_ID
