@@ -8,8 +8,5 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# use your preferred api key
-source ~/Projects/scan-namer/LMSTUDIO_API_KEY
-
 # Run the Python script with uv
 exec uv run scan_namer.py --download ~/Downloads/scans "$@"
