@@ -110,7 +110,7 @@ By default, scan-namer presents an interactive menu to choose which Google Drive
 A pytest unit suite covers secret resolution, provider/model resolution, config loading, Drive folder selection, filename validation, and PDF/URL helpers. No network access or API keys are needed.
 
 ```bash
-uv run pytest -q   # ~142 tests, ~0.1 s
+uv run pytest -q   # fast; no network or API keys required
 ```
 
 ## alternative uses

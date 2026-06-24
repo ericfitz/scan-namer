@@ -156,7 +156,7 @@ All dependencies are automatically managed by uv from `pyproject.toml` when runn
 ## Development Notes
 
 ### Testing Approach
-- Unit tests live in `tests/`; run with `uv run pytest -q` (142 tests, ~0.1 s, no network required)
+- Unit tests live in `tests/`; run with `uv run pytest -q` (fast, no network or API keys required)
 - Integration/live-API testing still relies on manual runs with real Google Drive and LLM APIs — always use `--dry-run` to avoid unintended renames
 - Always use `--dry-run` flag when testing to avoid unintended file renames
 - Test text extraction and PDF upload modes separately
