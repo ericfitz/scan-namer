@@ -86,7 +86,23 @@ cp .env.example .env
 ./scan-namer --enable-ocr-embedding    # Enable OCR for image-only PDFs
 ./scan-namer --provider anthropic      # Use specific provider
 ./scan-namer --model claude-sonnet-4-20250514  # Use specific model
+./scan-namer --folder "My Scans"       # Use named Google Drive root folder
 ./scan-namer --verbose                 # Enable debug logging
+```
+
+### Google Drive folder selection
+
+By default, scan-namer presents an interactive menu to choose which Google Drive folder to scan. You can skip the menu in two ways:
+
+- **`--folder NAME`** (CLI flag): specifies the folder name at runtime. A case-insensitive match against root-level Drive folders is performed; if exactly one folder matches, the menu is skipped. If zero or more than one folder matches, a warning is shown and the interactive menu is displayed instead.
+- **`google_drive.folder_name`** (config key in `config.json`): sets a persistent default folder name. `--folder` overrides this value when both are present. Leave the key empty (the default) to always show the menu.
+
+```json
+{
+  "google_drive": {
+    "folder_name": "My Scans"
+  }
+}
 ```
 
 ## alternative uses
@@ -116,6 +132,16 @@ PDF_EXTRACTION_PAGES=3
 # Behavior
 GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_
 ```
+
+#### Secret-file fallback
+
+If a provider API key (or `GOOGLE_PROJECT_ID`) is not set in the environment, scan-namer also looks for a file named **exactly** like the environment variable (e.g. `ANTHROPIC_API_KEY`) in the application directory. The file may contain the raw key value, or a shell export line such as:
+
+```
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+The environment variable always takes precedence over the file. This fallback applies to all provider API keys and to `GOOGLE_PROJECT_ID`.
 
 ### JSON Configuration Files
 - `config.json`: Provider settings, model lists, PDF/logging config
