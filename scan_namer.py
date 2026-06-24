@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -75,6 +76,9 @@ def prefer_ipv4() -> None:
 
     _ipv4_first._ipv4_preferred = True  # type: ignore[attr-defined]
     socket.getaddrinfo = _ipv4_first  # type: ignore[assignment]
+
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class ConfigManager:
@@ -639,6 +643,70 @@ class BaseLLMClient:
             logging.error(f"Error encoding PDF to base64: {e}")
             return ""
 
+    def _parse_secret_file(self, path: str, env_var_name: str) -> Optional[str]:
+        """Read a secret from a file.
+
+        Accepts either a raw secret (the file's first non-empty line) or a
+        shell-style assignment line such as:
+            export ANTHROPIC_API_KEY=foo
+            ANTHROPIC_API_KEY="foo"
+        Surrounding single/double quotes on an assignment value are stripped.
+        """
+        try:
+            with open(path, "r") as f:
+                lines = f.readlines()
+        except OSError as e:
+            logging.warning(f"Could not read secret file {path}: {e}")
+            return None
+
+        assign = re.compile(
+            rf"^\s*(?:export\s+)?{re.escape(env_var_name)}\s*=\s*(.+?)\s*$"
+        )
+        for line in lines:
+            m = assign.match(line)
+            if m:
+                value = m.group(1)
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                    value = value[1:-1]
+                return value or None
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped:
+                return stripped
+        return None
+
+    def _resolve_secret(self, env_var_name: str) -> Optional[str]:
+        """Resolve a secret from the environment, else an app-dir file.
+
+        The environment always wins. The file must be named exactly
+        ``env_var_name`` (no extension) and live in the application directory.
+        """
+        value = os.getenv(env_var_name)
+        if value:
+            return value
+        path = os.path.join(APP_DIR, env_var_name)
+        if os.path.isfile(path):
+            return self._parse_secret_file(path, env_var_name)
+        return None
+
+    def _get_api_key(self) -> str:
+        """Resolve this provider's API key from env or app-dir file."""
+        api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
+        if not isinstance(api_key_env, str):
+            logging.error(
+                f"Invalid API key environment variable name for {self.provider}"
+            )
+            sys.exit(1)
+        api_key = self._resolve_secret(api_key_env)
+        if not api_key:
+            logging.error(
+                f"API key not found. Set environment variable {api_key_env} or "
+                f"place it in a file named {api_key_env} in {APP_DIR}."
+            )
+            sys.exit(1)
+        return api_key
+
     PDF_STRATEGIES = frozenset({
         "inline_base64_document",
         "files_api_responses",
@@ -725,19 +793,6 @@ class XAIClient(BaseLLMClient):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self.endpoint = config.get(f"llm.providers.{provider}.api_endpoint")
-
-    def _get_api_key(self) -> str:
-        api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
-        if not isinstance(api_key_env, str):
-            logging.error(
-                f"Invalid API key environment variable name for {self.provider}"
-            )
-            sys.exit(1)
-        api_key = os.getenv(api_key_env)
-        if not api_key:
-            logging.error(f"API key not found in environment variable: {api_key_env}")
-            sys.exit(1)
-        return api_key
 
     def _files_url(self) -> str:
         """Derive the xAI Files API URL from the chat-completions endpoint."""
@@ -1058,14 +1113,6 @@ class AnthropicClient(BaseLLMClient):
         self.api_key = self._get_api_key()
         self._setup_client()
 
-    def _get_api_key(self) -> str:
-        api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
-        api_key = os.getenv(api_key_env)
-        if not api_key:
-            logging.error(f"API key not found in environment variable: {api_key_env}")
-            sys.exit(1)
-        return api_key
-
     def _setup_client(self) -> None:
         try:
             import anthropic
@@ -1227,14 +1274,6 @@ class OpenAIClient(BaseLLMClient):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
         self._setup_client()
-
-    def _get_api_key(self) -> str:
-        api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
-        api_key = os.getenv(api_key_env)
-        if not api_key:
-            logging.error(f"API key not found in environment variable: {api_key_env}")
-            sys.exit(1)
-        return api_key
 
     def _setup_client(self) -> None:
         try:
@@ -1464,15 +1503,13 @@ class LMStudioClient(OpenAIClient):
     def _get_api_key(self) -> str:
         """Return the configured API key, or a placeholder if unset.
 
-        LM Studio does not authenticate by default. If the user has placed
-        the local server behind an auth proxy, they can set the env var
-        named by `llm.providers.lmstudio.api_key_env` (default
-        LMSTUDIO_API_KEY); otherwise we return a non-empty placeholder so
-        the openai SDK does not refuse to construct.
+        LM Studio does not authenticate by default. Resolve from env or an
+        app-dir file named after ``api_key_env``; if neither is present, return
+        a non-empty placeholder so the openai SDK does not refuse to construct.
         """
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
         if isinstance(api_key_env, str):
-            api_key = os.getenv(api_key_env)
+            api_key = self._resolve_secret(api_key_env)
             if api_key:
                 return api_key
         return "lm-studio"
@@ -1525,10 +1562,14 @@ class GoogleClient(BaseLLMClient):
 
     def _get_project_id(self) -> str:
         project_env = self.config.get(f"llm.providers.{self.provider}.project_id_env")
-        project_id = os.getenv(project_env)
+        if not isinstance(project_env, str):
+            logging.error(f"Invalid project ID environment variable name for {self.provider}")
+            sys.exit(1)
+        project_id = self._resolve_secret(project_env)
         if not project_id:
             logging.error(
-                f"Project ID not found in environment variable: {project_env}"
+                f"Project ID not found. Set environment variable {project_env} or "
+                f"place it in a file named {project_env} in {APP_DIR}."
             )
             sys.exit(1)
         return project_id
