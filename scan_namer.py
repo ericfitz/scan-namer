@@ -26,7 +26,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-import PyPDF2
+import pypdf
 from dotenv import load_dotenv
 import pytesseract
 from pdf2image import convert_from_path
@@ -416,7 +416,7 @@ class PDFProcessor:
         """Get the number of pages in a PDF."""
         try:
             with open(pdf_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
+                reader = pypdf.PdfReader(f)
                 return len(reader.pages)
         except Exception as e:
             logging.error(f"Error reading PDF {pdf_path}: {e}")
@@ -435,8 +435,8 @@ class PDFProcessor:
 
         try:
             with open(input_path, "rb") as input_file:
-                reader = PyPDF2.PdfReader(input_file)
-                writer = PyPDF2.PdfWriter()
+                reader = pypdf.PdfReader(input_file)
+                writer = pypdf.PdfWriter()
 
                 pages_to_extract = min(num_pages, len(reader.pages))
                 for i in range(pages_to_extract):
@@ -463,7 +463,7 @@ class PDFProcessor:
         try:
             text_content = []
             with open(pdf_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
+                reader = pypdf.PdfReader(f)
                 pages_to_process = min(max_pages, len(reader.pages))
 
                 for i in range(pages_to_process):
@@ -502,7 +502,7 @@ class PDFProcessor:
             page_count = 0
 
             with open(pdf_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
+                reader = pypdf.PdfReader(f)
                 page_count = len(reader.pages)
 
                 for page in reader.pages:
@@ -564,8 +564,8 @@ class PDFProcessor:
         try:
             # Read original PDF
             with open(original_pdf_path, "rb") as input_file:
-                reader = PyPDF2.PdfReader(input_file)
-                writer = PyPDF2.PdfWriter()
+                reader = pypdf.PdfReader(input_file)
+                writer = pypdf.PdfWriter()
 
                 # Process each page
                 for page_num, page in enumerate(reader.pages):
@@ -573,7 +573,7 @@ class PDFProcessor:
                     writer.add_page(page)
 
                     # If we have OCR text for this page, we'll add it as metadata
-                    # Note: PyPDF2 doesn't directly support invisible text layers,
+                    # Note: pypdf does not directly support invisible text layers,
                     # but we can add the text to the page's content stream in a way
                     # that makes it searchable
                     if page_num < len(ocr_text_list) and ocr_text_list[page_num]:
