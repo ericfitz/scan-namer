@@ -113,7 +113,7 @@ The application follows object-oriented design with clear separation of concerns
 Uses uv for package management. Dependencies are declared in `pyproject.toml` and include:
 - Google API libraries (Drive, OAuth, modern Google Gen AI SDK)
 - LLM provider SDKs (anthropic, openai, requests for X.AI)
-- PDF processing (PyPDF2)
+- PDF processing (pypdf)
 - Utilities (python-dotenv, base64, logging)
 
 All dependencies are automatically managed by uv from `pyproject.toml` when running the app or the test suite. The Google integration uses the latest Google Gen AI SDK (google-genai) instead of the deprecated Vertex AI SDK, eliminating deprecation warnings. (`update_models.py` remains a standalone PEP 723 inline-metadata script.)
