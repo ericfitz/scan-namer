@@ -161,7 +161,7 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 ```
 
 ### Option 2: Configuration Files
-- Edit `config.json` for persistent settings
+- Copy `config.json.example` to `config.json` (the real `config.json` is git-ignored so instance-specific settings stay local), then edit it for persistent settings
 - Edit `prompts.json` to customize the prompts sent to the LLM
 
 **Note:** Environment variables in `.env` will override `config.json` settings.

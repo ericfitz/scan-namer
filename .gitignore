@@ -216,6 +216,9 @@ credentials.json
 token.json
 *.env
 
+# Instance-specific runtime config; copy config.json.example to config.json
+config.json
+
 # Secret/credential files sourced from the application directory when the
 # matching env var is unset (see BaseLLMClient._resolve_secret)
 *_API_KEY

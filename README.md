@@ -153,7 +153,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 The environment variable always takes precedence over the file. This fallback applies to each provider's API-key variable (`XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) and to `GOOGLE_PROJECT_ID`.
 
 ### JSON Configuration Files
-- `config.json`: Provider settings, model lists, PDF/logging config
+- `config.json`: Provider settings, model lists, PDF/logging config (git-ignored; copy `config.json.example` to create it)
 - `prompts.json`: LLM prompt templates for document analysis
 
 **Note**: Environment variables override JSON configuration.
