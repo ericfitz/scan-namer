@@ -1092,16 +1092,16 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.7.0" },
-    { name = "google-api-python-client", specifier = "==2.198.0" },
-    { name = "google-auth", specifier = "==2.56.3" },
-    { name = "google-auth-oauthlib", specifier = "==1.4.0" },
+    { name = "google-api-python-client", specifier = ">=2.198.0" },
+    { name = "google-auth", specifier = ">=2.56.3" },
+    { name = "google-auth-oauthlib", specifier = ">=1.4.0" },
     { name = "google-genai", specifier = ">=0.1.0" },
     { name = "openai", specifier = ">=1.0.0" },
-    { name = "pdf2image", specifier = "==1.17.0" },
+    { name = "pdf2image", specifier = ">=1.17.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "pypdf", specifier = ">=4.0.0" },
-    { name = "pytesseract", specifier = "==0.3.13" },
-    { name = "python-dotenv", specifier = "==1.2.2" },
+    { name = "pytesseract", specifier = ">=0.3.13" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "types-requests" },
 ]
