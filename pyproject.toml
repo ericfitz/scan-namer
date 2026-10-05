@@ -3,15 +3,15 @@ name = "scan-namer"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "google-auth-oauthlib>=1.4.1",
-    "google-auth>=2.58.1",
-    "google-api-python-client>=2.200.0",
-    "google-genai>=2.25.0",
-    "anthropic>=1.8.0",
-    "openai>=3.19.2",
+    "google-auth-oauthlib>=1.5.0",
+    "google-auth>=2.59.1",
+    "google-api-python-client>=2.201.0",
+    "google-genai>=2.27.0",
+    "anthropic>=1.11.0",
+    "openai>=3.23.0",
     "pypdf>=6.19.0",
     "requests>=2.31.0",
-    "python-dotenv>=1.2.3",
+    "python-dotenv>=1.2.4",
     "types-requests",
     "pytesseract>=0.3.13",
     "pdf2image>=1.17.0",
