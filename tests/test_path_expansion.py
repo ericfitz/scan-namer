@@ -99,12 +99,41 @@ def test_log_file_unset_var_exits(config, monkeypatch):
         namer._setup_logging()
 
 
-def test_default_config_file_is_xdg_style_location():
-    assert scan_namer.DEFAULT_CONFIG_FILE == "~/.config/scan-namer/config.json"
+def test_default_config_file_without_xdg(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    assert scan_namer.default_config_file() == str(
+        tmp_path / ".config" / "scan-namer" / "config.json"
+    )
+
+
+def test_default_config_file_uses_xdg(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert scan_namer.default_config_file() == str(
+        tmp_path / "xdg" / "scan-namer" / "config.json"
+    )
+
+
+@pytest.mark.parametrize("xdg", ["", "relative/dir"])
+def test_default_config_file_ignores_empty_or_relative_xdg(monkeypatch, tmp_path, xdg):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", xdg)
+    assert scan_namer.default_config_file() == str(
+        tmp_path / ".config" / "scan-namer" / "config.json"
+    )
+
+
+def test_config_manager_default_reads_xdg_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "scan-namer").mkdir()
+    _write_config(tmp_path / "scan-namer" / "config.json")
+    cm = scan_namer.ConfigManager()
+    assert cm.config_file == str(tmp_path / "scan-namer" / "config.json")
 
 
 def test_config_manager_default_reads_home_config(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     cfg_dir = tmp_path / ".config" / "scan-namer"
     cfg_dir.mkdir(parents=True)
     _write_config(cfg_dir / "config.json")

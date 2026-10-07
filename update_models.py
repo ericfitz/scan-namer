@@ -67,8 +67,20 @@ LITELLM_REGISTRY_URL = (
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 logger = logging.getLogger(__name__)
-# scan-namer's config file, shared with scan_namer.py's DEFAULT_CONFIG_FILE.
-DEFAULT_CONFIG_FILE = "~/.config/scan-namer/config.json"
+
+
+# Mirrors scan_namer.default_config_file (this script stands alone).
+def default_config_file() -> str:
+    """Return ``$XDG_CONFIG_HOME/scan-namer/config.json``.
+
+    Falls back to ``~/.config`` when XDG_CONFIG_HOME is unset, empty or
+    relative (the XDG Base Directory spec says to ignore relative values).
+    """
+    base = os.environ.get("XDG_CONFIG_HOME", "")
+    if not os.path.isabs(base):
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "scan-namer", "config.json")
+
 
 # Minimal valid 1-page PDF (612x792 / US Letter, no content stream).
 # Generated once and pinned; verify integrity in tests.
@@ -952,15 +964,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument(
         "--config",
-        default=DEFAULT_CONFIG_FILE,
-        help=f"Configuration file path (default: {DEFAULT_CONFIG_FILE})",
+        default=None,
+        help=(
+            "Configuration file path (default: "
+            "$XDG_CONFIG_HOME/scan-namer/config.json, or "
+            "~/.config/scan-namer/config.json)"
+        ),
     )
     return parser.parse_args(argv)
 
 
-def resolve_config_path(raw: str) -> str:
+def resolve_config_path(raw: str | None) -> str:
     """Expand ``~`` and ``$VAR``/``${VAR}`` in a config path; exit if a
-    referenced variable is unset."""
+    referenced variable is unset. None means the default location."""
+    if raw is None:
+        return default_config_file()
     path = os.path.expanduser(os.path.expandvars(raw.strip()))
     if "$" in path:
         print(f"{RED_X} --config {raw!r} references an unset environment variable")

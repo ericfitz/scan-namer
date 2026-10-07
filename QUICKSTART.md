@@ -30,7 +30,7 @@ cp .env.example .env
 
 ### 3. Create the config file
 ```bash
-mkdir -p ~/.config/scan-namer && cp config.json.example ~/.config/scan-namer/config.json
+D="${XDG_CONFIG_HOME:-$HOME/.config}/scan-namer"; mkdir -p "$D" && cp config.json.example "$D/config.json"
 ```
 
 ### 4. Test the setup
@@ -69,7 +69,7 @@ If the dry run works, remove `--dry-run` to start renaming files:
 - `--model MODEL_NAME`: Use specific LLM model
 - `--list-providers`: Show available providers
 - `--list-models`: Show available models (PDF-capable marked with "PDF")
-- `--config custom.json`: Use different config file (default `~/.config/scan-namer/config.json`)
+- `--config custom.json`: Use different config file (default `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset))
 
 ## Provider & Model Selection
 ```bash

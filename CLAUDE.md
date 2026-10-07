@@ -40,7 +40,7 @@ PDF support is declared per model in `config.json` and validated early, with war
 
 - `scan-namer` — bash wrapper; `scan_namer.py` — application; `update_models.py` — standalone PEP 723 script
 - `pyproject.toml` — dependencies (managed by uv) and pytest config; `tests/` — unit suite
-- `~/.config/scan-namer/config.json` — provider settings, model lists, PDF-support flags (outside the repo; `--config` overrides; template `config.json.example`); `prompts.json` — LLM prompts, read from the script's directory
+- `${XDG_CONFIG_HOME:-~/.config}/scan-namer/config.json` — provider settings, model lists, PDF-support flags (outside the repo; `--config` overrides; template `config.json.example`); `prompts.json` — LLM prompts, read from the script's directory
 - `.env.example` — environment template; `credentials.json` — Google OAuth credentials (user-supplied; path set by `google_drive.credentials_file`, `~`/`$VAR` expanded); `token.json` — OAuth token cache (generated)
 - `README.md`, `QUICKSTART.md`, `setup_instructions.md` — user docs
 

@@ -161,7 +161,7 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 ```
 
 ### Option 2: Configuration Files
-- Create the config file at `~/.config/scan-namer/config.json` (`mkdir -p ~/.config/scan-namer && cp config.json.example ~/.config/scan-namer/config.json`), then edit it for persistent settings. It lives outside the repo so instance-specific settings stay local; `--config FILE` selects another file
+- Create the config file at `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset) (`D="${XDG_CONFIG_HOME:-$HOME/.config}/scan-namer"; mkdir -p "$D" && cp config.json.example "$D/config.json"`), then edit it for persistent settings. It lives outside the repo so instance-specific settings stay local; `--config FILE` selects another file
 - Edit `prompts.json` to customize the prompts sent to the LLM
 
 **Note:** Environment variables in `.env` will override `config.json` settings.
@@ -173,7 +173,7 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 - `--no-ocr`: Skip text extraction, upload PDFs directly (requires PDF-capable model)
 - `--tokens N`: Override max_tokens limit (e.g., `--tokens 3000` for longer responses)
 - `--verbose`: Enable debug logging
-- `--config FILE`: Use custom config file (default `~/.config/scan-namer/config.json`)
+- `--config FILE`: Use custom config file (default `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset))
 - `--download [DIR]`: Download renamed files to `DIR` (default `~/Downloads`; the `./scan-namer` wrapper passes `~/Downloads/scans`)
 
 `--config`, `--download` and `logging.file` (or `LOG_FILE`) expand `~` and `$VAR` / `${VAR}`, like the Google Drive paths; a reference to an unset variable is an error.

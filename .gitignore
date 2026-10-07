@@ -216,7 +216,7 @@ credentials.json
 token.json
 *.env
 
-# Runtime config now lives at ~/.config/scan-namer/config.json; keep a stray
+# Runtime config lives at ${XDG_CONFIG_HOME:-~/.config}/scan-namer/; keep a stray
 # local copy from being committed
 config.json
 

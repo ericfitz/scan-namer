@@ -50,7 +50,7 @@ cp .env.example .env
 # Edit .env with your API key (XAI_API_KEY, ANTHROPIC_API_KEY, etc.)
 
 # 2. Create the config file (edit it afterwards for your setup)
-mkdir -p ~/.config/scan-namer && cp config.json.example ~/.config/scan-namer/config.json
+D="${XDG_CONFIG_HOME:-$HOME/.config}/scan-namer"; mkdir -p "$D" && cp config.json.example "$D/config.json"
 
 # 3. Set up Google Drive credentials
 # Download credentials.json from Google Cloud Console into this directory, or
@@ -179,7 +179,7 @@ ANTHROPIC_API_KEY=your-anthropic-key
 The environment variable always takes precedence over the file. This fallback applies to each provider's API-key variable (`XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) and to `GOOGLE_PROJECT_ID`.
 
 ### JSON Configuration Files
-- `~/.config/scan-namer/config.json`: Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
+- `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset): Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
 - `prompts.json`: LLM prompt templates for document analysis
 
 **Note**: Environment variables override JSON configuration.

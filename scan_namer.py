@@ -64,8 +64,18 @@ def prefer_ipv4() -> None:
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Where the config file lives unless --config names another; expanded at load.
-DEFAULT_CONFIG_FILE = "~/.config/scan-namer/config.json"
+
+def default_config_file() -> str:
+    """Return ``$XDG_CONFIG_HOME/scan-namer/config.json``.
+
+    Falls back to ``~/.config`` when XDG_CONFIG_HOME is unset, empty or
+    relative (the XDG Base Directory spec says to ignore relative values).
+    """
+    base = os.environ.get("XDG_CONFIG_HOME", "")
+    if not os.path.isabs(base):
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "scan-namer", "config.json")
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +105,9 @@ def expand_config_path(key: str, raw: Any, require_absolute: bool = False) -> st
 class ConfigManager:
     """Manages configuration loading and validation."""
 
-    def __init__(self, config_file: str = DEFAULT_CONFIG_FILE):
+    def __init__(self, config_file: str | None = None):
+        if config_file is None:
+            config_file = default_config_file()
         self.config_file = expand_config_path("config file", config_file)
         self.config = self._load_config()
         self._validate_config()
@@ -110,7 +122,7 @@ class ConfigManager:
             logger.error(
                 f"Configuration file {self.config_file} not found. Copy "
                 f"config.json.example from {APP_DIR} to "
-                f"{DEFAULT_CONFIG_FILE} (or pass --config)."
+                f"{default_config_file()} (or pass --config)."
             )
             sys.exit(1)
         except json.JSONDecodeError as e:
@@ -1986,7 +1998,7 @@ class ScanNamer:
 
     def __init__(
         self,
-        config_file: str = DEFAULT_CONFIG_FILE,
+        config_file: str | None = None,
         dry_run: bool = False,
         model: str | None = None,
         provider: str | None = None,
@@ -2436,8 +2448,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--config",
-        default=DEFAULT_CONFIG_FILE,
-        help=f"Configuration file path (default: {DEFAULT_CONFIG_FILE})",
+        default=None,
+        help=(
+            "Configuration file path (default: "
+            "$XDG_CONFIG_HOME/scan-namer/config.json, or "
+            "~/.config/scan-namer/config.json)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
