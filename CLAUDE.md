@@ -22,7 +22,7 @@ uv run pytest -q                                # unit tests (hermetic: no netwo
 3. Get content to the LLM: extract text (shortening long documents to the first N pages) or, for image-only PDFs / `--no-ocr`, upload the PDF (base64) directly to a vision model. Text-extraction failure falls back to PDF upload automatically when the model supports it
 4. Ask the LLM for a filename using prompts from `prompts.json`; validate and clean it for filesystem rules
 5. Rename in Drive (skipped under `--dry-run`); upload a searchable PDF for OCR'd documents
-6. Log with RFC3339 timestamps, token usage, and cost; clean up temp files even on errors. Drive operations retry with exponential backoff
+6. Log with RFC3339 timestamps, token usage, and cost (to `${XDG_STATE_HOME:-~/.local/state}/scan-namer/scan_namer.log`, rotating); clean up temp files even on errors. Drive operations retry with exponential backoff
 
 PDF support is declared per model in `config.json` and validated early, with warnings for incompatible model/flag combinations.
 

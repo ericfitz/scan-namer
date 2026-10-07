@@ -178,6 +178,8 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 
 `--config`, `--download` and `logging.file` (or `LOG_FILE`) expand `~` and `$VAR` / `${VAR}`, like the Google Drive paths; a reference to an unset variable is an error.
 
+The log is written to `$XDG_STATE_HOME/scan-namer/scan_namer.log` (`~/.local/state/scan-namer/scan_namer.log` when `XDG_STATE_HOME` is unset); the directory is created with mode 700. A relative `logging.file` is placed in that directory. The log rotates at 5 MB and keeps 3 backups (`scan_namer.log.1` … `.3`).
+
 ### Model Selection
 - `--provider PROVIDER`: Choose LLM provider (xai, anthropic, openai, google)
 - `--model MODEL`: Override the LLM model

@@ -79,6 +79,8 @@ def _isolate_env(monkeypatch):
         "GOOGLE_DRIVE_CREDENTIALS_FILE",
         "GOOGLE_DRIVE_TOKEN_FILE",
         "LOG_FILE",
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
     ]:
         monkeypatch.delenv(var, raising=False)
 

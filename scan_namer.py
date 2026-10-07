@@ -9,6 +9,7 @@ import base64
 import io
 import json
 import logging
+import logging.handlers
 import os
 import re
 import socket
@@ -75,6 +76,23 @@ def default_config_file() -> str:
     if not os.path.isabs(base):
         base = os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(base, "scan-namer", "config.json")
+
+
+# Log rotation: keep the active file under 5 MB plus three backups.
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
+
+
+def default_log_file() -> str:
+    """Return ``$XDG_STATE_HOME/scan-namer/scan_namer.log``.
+
+    Falls back to ``~/.local/state`` when XDG_STATE_HOME is unset, empty or
+    relative (the XDG Base Directory spec says to ignore relative values).
+    """
+    base = os.environ.get("XDG_STATE_HOME", "")
+    if not os.path.isabs(base):
+        base = os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "scan-namer", "scan_namer.log")
 
 
 logger = logging.getLogger(__name__)
@@ -2058,9 +2076,18 @@ class ScanNamer:
         log_format = self.config.get(
             "logging.format", "%(asctime)s - %(levelname)s - %(message)s"
         )
-        log_file = expand_config_path(
-            "logging.file", self.config.get("logging.file", "scan_namer.log")
-        )
+        # logging.file (or LOG_FILE) overrides the default; a relative value
+        # is placed in the default log directory, not the working directory.
+        default_log = default_log_file()
+        configured = self.config.get("logging.file")
+        if configured is None:
+            log_file = default_log
+        else:
+            log_file = os.path.join(
+                os.path.dirname(default_log),
+                expand_config_path("logging.file", configured),
+            )
+        os.makedirs(os.path.dirname(log_file), mode=0o700, exist_ok=True)
 
         # Create custom formatter for RFC3339/ISO8601 with milliseconds
         class RFC3339Formatter(logging.Formatter):
@@ -2074,7 +2101,12 @@ class ScanNamer:
         formatter = RFC3339Formatter(log_format)
 
         # Create handlers
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        )
         file_handler.setFormatter(formatter)
 
         console_handler = logging.StreamHandler(sys.stdout)

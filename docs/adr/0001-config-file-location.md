@@ -24,7 +24,7 @@ tools run from any directory.
 ## Consequences
 
 - New setups copy `config.json.example` into that directory.
-- Relative paths inside the config (e.g. `logging.file: scan_namer.log`)
-  still resolve against the working directory.
+- Relative Google Drive paths in the config still resolve against the
+  working directory; `logging.file` is covered by ADR 0002.
 - `XDG_CONFIG_HOME` support was added at Eric's request (human decision,
   2026-10-07). It is not set in the shell profile; the fallback applies.

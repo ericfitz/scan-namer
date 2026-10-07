@@ -1,5 +1,6 @@
 import json
 import logging
+import logging.handlers
 import os
 
 import pytest
@@ -63,7 +64,6 @@ def test_download_dir_missing_exits(tmp_path):
 def test_log_file_expanded(config, monkeypatch, tmp_path, raw):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("LOGS_HOME", str(tmp_path))
-    (tmp_path / "logs").mkdir()
     config.config["logging"]["file"] = raw
     namer = object.__new__(scan_namer.ScanNamer)
     namer.config = config
@@ -152,3 +152,68 @@ def test_prompts_default_is_beside_script(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # no ./prompts.json here
     pm = scan_namer.PromptManager()
     assert pm.prompts_file == os.path.join(scan_namer.APP_DIR, "prompts.json")
+
+
+def _run_setup_logging(config, monkeypatch):
+    """Run _setup_logging, capture the handlers, close them, return them."""
+    namer = object.__new__(scan_namer.ScanNamer)
+    namer.config = config
+    captured = {}
+    monkeypatch.setattr(logging, "basicConfig", lambda **kw: captured.update(kw))
+    namer._setup_logging()
+    for h in captured["handlers"]:
+        h.close()
+    return captured["handlers"]
+
+
+def test_default_log_file_without_xdg(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert scan_namer.default_log_file() == str(
+        tmp_path / ".local" / "state" / "scan-namer" / "scan_namer.log"
+    )
+
+
+def test_default_log_file_uses_xdg_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "st"))
+    assert scan_namer.default_log_file() == str(
+        tmp_path / "st" / "scan-namer" / "scan_namer.log"
+    )
+
+
+@pytest.mark.parametrize("xdg", ["", "relative/dir"])
+def test_default_log_file_ignores_empty_or_relative_xdg(monkeypatch, tmp_path, xdg):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", xdg)
+    assert scan_namer.default_log_file() == str(
+        tmp_path / ".local" / "state" / "scan-namer" / "scan_namer.log"
+    )
+
+
+def test_log_file_unset_uses_state_dir_and_creates_it(config, monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    del config.config["logging"]["file"]
+    _run_setup_logging(config, monkeypatch)
+    log_dir = tmp_path / "scan-namer"
+    assert (log_dir / "scan_namer.log").exists()
+    assert (log_dir.stat().st_mode & 0o777) == 0o700
+
+
+def test_relative_log_file_resolves_in_state_dir(config, monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "st"))
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    config.config["logging"]["file"] = "custom.log"
+    _run_setup_logging(config, monkeypatch)
+    assert (tmp_path / "st" / "scan-namer" / "custom.log").exists()
+    assert not (workdir / "custom.log").exists()
+
+
+def test_log_handler_rotates(config, monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    handlers = _run_setup_logging(config, monkeypatch)
+    files = [h for h in handlers if isinstance(h, logging.FileHandler)]
+    assert len(files) == 1
+    assert isinstance(files[0], logging.handlers.RotatingFileHandler)
+    assert files[0].maxBytes == 5 * 1024 * 1024
+    assert files[0].backupCount == 3

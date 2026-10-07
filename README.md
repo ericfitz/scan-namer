@@ -181,6 +181,7 @@ The environment variable always takes precedence over the file. This fallback ap
 ### JSON Configuration Files
 - `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset): Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
 - `prompts.json`: LLM prompt templates for document analysis
+- `$XDG_STATE_HOME/scan-namer/scan_namer.log` (`~/.local/state/scan-namer/scan_namer.log` when `XDG_STATE_HOME` is unset): run log, rotated at 5 MB with 3 backups (`logging.file` / `LOG_FILE` override it)
 
 **Note**: Environment variables override JSON configuration.
 
