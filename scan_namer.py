@@ -243,6 +243,17 @@ class GoogleDriveManager:
             return None
         return expand_config_path(key, raw)
 
+    @staticmethod
+    def _write_token(path: str, data: str) -> None:
+        """Write the OAuth token readable only by the owner (mode 600).
+
+        An existing file is truncated and tightened to 600 as well.
+        """
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as token:
+            token.write(data)
+
     def _authenticate(self) -> None:
         """Authenticate with Google Drive API."""
         creds = None
@@ -282,8 +293,7 @@ class GoogleDriveManager:
 
             # Save the credentials
             if token_file:
-                with open(token_file, "w") as token:
-                    token.write(creds.to_json())
+                self._write_token(token_file, creds.to_json())
                 logger.info(f"Saved credentials to {token_file}")
 
         self.service = build("drive", "v3", credentials=creds)

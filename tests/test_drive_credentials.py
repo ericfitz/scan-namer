@@ -143,4 +143,21 @@ def test_authenticate_uses_expanded_paths(config, monkeypatch, tmp_path):
 
     assert seen["creds_path"] == str(keys / "credentials.json")
     assert (tmp_path / "token.json").read_text() == '{"fake": true}'
+    assert (tmp_path / "token.json").stat().st_mode & 0o777 == 0o600
     assert not (tmp_path / "~").exists()
+
+
+def test_write_token_creates_mode_600(tmp_path):
+    path = tmp_path / "token.json"
+    scan_namer.GoogleDriveManager._write_token(str(path), '{"t": 1}')
+    assert path.read_text() == '{"t": 1}'
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_write_token_tightens_existing_file(tmp_path):
+    path = tmp_path / "token.json"
+    path.write_text("old-and-longer-content")
+    path.chmod(0o644)
+    scan_namer.GoogleDriveManager._write_token(str(path), "new")
+    assert path.read_text() == "new"
+    assert path.stat().st_mode & 0o777 == 0o600
