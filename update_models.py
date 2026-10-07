@@ -67,7 +67,8 @@ LITELLM_REGISTRY_URL = (
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 logger = logging.getLogger(__name__)
-CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
+# scan-namer's config file, shared with scan_namer.py's DEFAULT_CONFIG_FILE.
+DEFAULT_CONFIG_FILE = "~/.config/scan-namer/config.json"
 
 # Minimal valid 1-page PDF (612x792 / US Letter, no content stream).
 # Generated once and pinned; verify integrity in tests.
@@ -949,7 +950,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Print what would be written, don't modify config.json",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_FILE,
+        help=f"Configuration file path (default: {DEFAULT_CONFIG_FILE})",
+    )
     return parser.parse_args(argv)
+
+
+def resolve_config_path(raw: str) -> str:
+    """Expand ``~`` and ``$VAR``/``${VAR}`` in a config path; exit if a
+    referenced variable is unset."""
+    path = os.path.expanduser(os.path.expandvars(raw.strip()))
+    if "$" in path:
+        print(f"{RED_X} --config {raw!r} references an unset environment variable")
+        sys.exit(2)
+    return path
 
 
 PROVIDER_CLASSES = {
@@ -1092,8 +1108,16 @@ def main(argv: list[str] | None = None) -> int:
         ):
             logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
+    config_path = resolve_config_path(args.config)
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print(
+            f"{RED_X} Config file {config_path} not found. Copy "
+            f"config.json.example from {PROJECT_ROOT} there (or pass --config)."
+        )
+        return 2
 
     providers = config.get("llm", {}).get("providers", {})
     if args.provider:
@@ -1146,7 +1170,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         any_success = any(s.success for s in summaries)
         if any_success:
-            atomic_write_json(CONFIG_PATH, new_config)
+            atomic_write_json(config_path, new_config)
         else:
             logger.warning("All providers failed; not writing config.json")
 

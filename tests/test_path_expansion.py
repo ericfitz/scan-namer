@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 import pytest
 
@@ -96,3 +97,29 @@ def test_log_file_unset_var_exits(config, monkeypatch):
     namer.config = config
     with pytest.raises(SystemExit):
         namer._setup_logging()
+
+
+def test_default_config_file_is_xdg_style_location():
+    assert scan_namer.DEFAULT_CONFIG_FILE == "~/.config/scan-namer/config.json"
+
+
+def test_config_manager_default_reads_home_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg_dir = tmp_path / ".config" / "scan-namer"
+    cfg_dir.mkdir(parents=True)
+    _write_config(cfg_dir / "config.json")
+    monkeypatch.chdir(tmp_path)  # no ./config.json to fall back on
+    cm = scan_namer.ConfigManager()
+    assert cm.config_file == str(cfg_dir / "config.json")
+
+
+def test_config_manager_missing_default_exits(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(SystemExit):
+        scan_namer.ConfigManager()
+
+
+def test_prompts_default_is_beside_script(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # no ./prompts.json here
+    pm = scan_namer.PromptManager()
+    assert pm.prompts_file == os.path.join(scan_namer.APP_DIR, "prompts.json")

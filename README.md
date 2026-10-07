@@ -49,14 +49,17 @@ This script does the following:
 cp .env.example .env
 # Edit .env with your API key (XAI_API_KEY, ANTHROPIC_API_KEY, etc.)
 
-# 2. Set up Google Drive credentials
+# 2. Create the config file (edit it afterwards for your setup)
+mkdir -p ~/.config/scan-namer && cp config.json.example ~/.config/scan-namer/config.json
+
+# 3. Set up Google Drive credentials
 # Download credentials.json from Google Cloud Console into this directory, or
 # store it elsewhere and point google_drive.credentials_file at it (see below)
 
-# 3. Test the setup
+# 4. Test the setup
 ./scan-namer --dry-run
 
-# 4. See available models (shows PDF support with * indicator)
+# 5. See available models (shows PDF support with * indicator)
 ./scan-namer --list-models
 
 # 5. Use with PDF upload for image-based PDFs
@@ -176,7 +179,7 @@ ANTHROPIC_API_KEY=your-anthropic-key
 The environment variable always takes precedence over the file. This fallback applies to each provider's API-key variable (`XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) and to `GOOGLE_PROJECT_ID`.
 
 ### JSON Configuration Files
-- `config.json`: Provider settings, model lists, PDF/logging config (git-ignored; copy `config.json.example` to create it)
+- `~/.config/scan-namer/config.json`: Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
 - `prompts.json`: LLM prompt templates for document analysis
 
 **Note**: Environment variables override JSON configuration.

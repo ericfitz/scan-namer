@@ -8,5 +8,8 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# Run the Python script with uv
-exec uv run scan_namer.py --download ~/Downloads/scans "$@"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+# Run the Python script with uv (from any directory: config defaults to
+# ~/.config/scan-namer/config.json and prompts.json is read from $ROOT)
+exec uv run --project "$ROOT" "$ROOT/scan_namer.py" --download ~/Downloads/scans "$@"

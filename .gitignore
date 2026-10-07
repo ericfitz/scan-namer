@@ -216,7 +216,8 @@ credentials.json
 token.json
 *.env
 
-# Instance-specific runtime config; copy config.json.example to config.json
+# Runtime config now lives at ~/.config/scan-namer/config.json; keep a stray
+# local copy from being committed
 config.json
 
 # Secret/credential files sourced from the application directory when the

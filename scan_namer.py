@@ -64,6 +64,9 @@ def prefer_ipv4() -> None:
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Where the config file lives unless --config names another; expanded at load.
+DEFAULT_CONFIG_FILE = "~/.config/scan-namer/config.json"
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,7 +95,7 @@ def expand_config_path(key: str, raw: Any, require_absolute: bool = False) -> st
 class ConfigManager:
     """Manages configuration loading and validation."""
 
-    def __init__(self, config_file: str = "config.json"):
+    def __init__(self, config_file: str = DEFAULT_CONFIG_FILE):
         self.config_file = expand_config_path("config file", config_file)
         self.config = self._load_config()
         self._validate_config()
@@ -104,7 +107,11 @@ class ConfigManager:
                 config_data = json.load(f)
                 return config_data
         except FileNotFoundError:
-            logger.error(f"Configuration file {self.config_file} not found")
+            logger.error(
+                f"Configuration file {self.config_file} not found. Copy "
+                f"config.json.example from {APP_DIR} to "
+                f"{DEFAULT_CONFIG_FILE} (or pass --config)."
+            )
             sys.exit(1)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in {self.config_file}: {e}")
@@ -199,7 +206,7 @@ class ConfigManager:
 class PromptManager:
     """Manages prompt templates from JSON file."""
 
-    def __init__(self, prompts_file: str = "prompts.json"):
+    def __init__(self, prompts_file: str = os.path.join(APP_DIR, "prompts.json")):
         self.prompts_file = prompts_file
         self.prompts = self._load_prompts()
 
@@ -1938,7 +1945,8 @@ class LLMClientFactory:
 
         if not model:
             logger.error(
-                f"Provider '{provider}' has no default_model configured in config.json"
+                f"Provider '{provider}' has no default_model configured in the "
+                "config file"
             )
             sys.exit(1)
 
@@ -1978,7 +1986,7 @@ class ScanNamer:
 
     def __init__(
         self,
-        config_file: str = "config.json",
+        config_file: str = DEFAULT_CONFIG_FILE,
         dry_run: bool = False,
         model: str | None = None,
         provider: str | None = None,
@@ -2427,7 +2435,9 @@ def main() -> None:
         description="Automatically rename scanned documents in Google Drive"
     )
     parser.add_argument(
-        "--config", default="config.json", help="Configuration file path"
+        "--config",
+        default=DEFAULT_CONFIG_FILE,
+        help=f"Configuration file path (default: {DEFAULT_CONFIG_FILE})",
     )
     parser.add_argument(
         "--dry-run",
@@ -2508,7 +2518,7 @@ def main() -> None:
                 print(f"  - {provider}{marker}")
 
             if not providers:
-                print("  No providers configured in config.json")
+                print("  No providers configured in the config file")
             return
         except (AttributeError, TypeError, ValueError) as e:
             print(f"Error loading configuration: {e}")
@@ -2548,7 +2558,7 @@ def main() -> None:
                     print("  No models configured")
 
             if not providers:
-                print("  No providers configured in config.json")
+                print("  No providers configured in the config file")
             return
         except (AttributeError, TypeError, ValueError) as e:
             print(f"Error loading configuration: {e}")

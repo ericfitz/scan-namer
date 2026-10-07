@@ -28,7 +28,12 @@ cp .env.example .env
 3. Create OAuth 2.0 credentials (Desktop application)
 4. Download as `credentials.json` in this directory, or save it elsewhere (e.g. `~/.keys/credentials.json`) and set `google_drive.credentials_file` in `config.json` to that path
 
-### 3. Test the setup
+### 3. Create the config file
+```bash
+mkdir -p ~/.config/scan-namer && cp config.json.example ~/.config/scan-namer/config.json
+```
+
+### 4. Test the setup
 ```bash
 ./scan-namer --dry-run
 ```
@@ -64,7 +69,7 @@ If the dry run works, remove `--dry-run` to start renaming files:
 - `--model MODEL_NAME`: Use specific LLM model
 - `--list-providers`: Show available providers
 - `--list-models`: Show available models (PDF-capable marked with "PDF")
-- `--config custom.json`: Use different config file
+- `--config custom.json`: Use different config file (default `~/.config/scan-namer/config.json`)
 
 ## Provider & Model Selection
 ```bash

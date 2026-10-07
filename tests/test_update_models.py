@@ -1303,3 +1303,23 @@ class CapabilityRejectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_update_models_default_config_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    args = update_models.parse_args([])
+    assert update_models.resolve_config_path(args.config) == str(
+        tmp_path / ".config" / "scan-namer" / "config.json"
+    )
+
+
+def test_update_models_config_flag_expands_vars(monkeypatch, tmp_path):
+    monkeypatch.setenv("CFG_HOME", str(tmp_path))
+    args = update_models.parse_args(["--config", "$CFG_HOME/c.json"])
+    assert update_models.resolve_config_path(args.config) == str(tmp_path / "c.json")
+
+
+def test_update_models_config_unset_var_exits(monkeypatch):
+    monkeypatch.delenv("SCAN_NAMER_UNSET_VAR", raising=False)
+    with pytest.raises(SystemExit):
+        update_models.resolve_config_path("$SCAN_NAMER_UNSET_VAR/c.json")
