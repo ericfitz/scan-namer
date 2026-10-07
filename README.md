@@ -161,7 +161,7 @@ ANTHROPIC_API_KEY=your-anthropic-key
 }
 ```
 
-When `api_key_file` is set and readable, scan-namer loads its key into the variable named by `api_key_env`, replacing any value already in the environment, and then uses that variable. An assignment of that variable wins; a file with a single assignment of another upper-case name is also accepted. If the file is missing, holds no key, or assigns several other variables, scan-namer logs a warning and falls back to the environment variable and then the secret file below. `update_models.py` also reads `api_key_file` first, without changing the environment; if the file yields no key it falls back to its own order (the app-directory file, then the environment variable).
+The environment wins: if the variable named by `api_key_env` is set, scan-namer uses it and ignores the file. Otherwise, when `api_key_file` is set and readable, scan-namer loads its key into that variable and uses it. An assignment of that variable wins; a file with a single assignment of another upper-case name is also accepted. If the file is missing, holds no key, or assigns several other variables, scan-namer logs a warning and falls back to the secret file below. The path is validated even when the environment variable is set. `update_models.py` follows the same order (environment, `api_key_file`, then the app-directory file) without changing the environment.
 
 #### Secret-file fallback
 

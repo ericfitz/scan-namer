@@ -979,8 +979,9 @@ def build_client(provider_name: str, provider_block: Dict[str, Any]):
             f"Provider {provider_name!r} has no api_endpoint in config"
         )
     api_key_env = provider_block.get("api_key_env")
-    api_key = None
-    if provider_block.get("api_key_file") is not None:
+    # The environment wins, then api_key_file, then the project-root file.
+    api_key = os.environ.get(api_key_env) if api_key_env else None
+    if not api_key and provider_block.get("api_key_file") is not None:
         api_key = read_api_key_file(provider_block["api_key_file"], api_key_env or "")
     if not api_key and api_key_env:
         api_key = resolve_api_key(api_key_env)

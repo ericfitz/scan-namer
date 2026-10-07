@@ -748,11 +748,12 @@ class BaseLLMClient:
     def _load_api_key_file(self, env_var_name: str) -> None:
         """Set ``env_var_name`` from this provider's ``api_key_file``, if any.
 
-        A configured file that is missing, unreadable or holds no key is
-        logged and skipped, leaving the environment as it was.
+        The environment wins: the file is read only when ``env_var_name`` is
+        unset or empty. The path is validated either way. A configured file
+        that is missing, unreadable or holds no key is logged and skipped.
         """
         path = self._api_key_file_path()
-        if path is None:
+        if path is None or os.getenv(env_var_name):
             return
         if not os.path.isfile(path):
             logging.warning(f"API key file {path} for {self.provider} not found")
@@ -764,7 +765,7 @@ class BaseLLMClient:
         os.environ[env_var_name] = value
 
     def _get_api_key(self) -> str:
-        """Resolve this provider's API key from its key file, env or app-dir file."""
+        """Resolve this provider's API key from env, its key file or app-dir file."""
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
         if not isinstance(api_key_env, str):
             logging.error(
@@ -1578,8 +1579,8 @@ class LMStudioClient(OpenAIClient):
     def _get_api_key(self) -> str:
         """Return the configured API key, or a placeholder if unset.
 
-        LM Studio does not authenticate by default. Resolve from the
-        configured ``api_key_file``, env, or an app-dir file named after
+        LM Studio does not authenticate by default. Resolve from env, the
+        configured ``api_key_file``, or an app-dir file named after
         ``api_key_env``; if none is present, return a non-empty placeholder so
         the openai SDK does not refuse to construct.
         """

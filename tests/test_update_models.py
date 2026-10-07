@@ -172,12 +172,26 @@ class BuildClientApiKeyTests(unittest.TestCase):
             update_models.build_client("fake", block)
         return captured["api_key"]
 
-    def test_api_key_file_wins(self):
+    def _key_file(self, root):
+        path = os.path.join(root, "k")
+        with open(path, "w") as f:
+            f.write("export UM_KEY=from-file\n")
+        return path
+
+    def test_env_wins_over_api_key_file(self):
         with tempfile.TemporaryDirectory() as root:
-            path = os.path.join(root, "k")
-            with open(path, "w") as f:
-                f.write("export UM_KEY=from-file\n")
+            path = self._key_file(root)
             with mock.patch.dict(os.environ, {"UM_KEY": "from-env"}):
+                key = self._build(
+                    {"api_endpoint": "https://x", "api_key_env": "UM_KEY", "api_key_file": path}
+                )
+        self.assertEqual(key, "from-env")
+
+    def test_api_key_file_used_when_env_unset(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self._key_file(root)
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("UM_KEY", None)
                 key = self._build(
                     {"api_endpoint": "https://x", "api_key_env": "UM_KEY", "api_key_file": path}
                 )

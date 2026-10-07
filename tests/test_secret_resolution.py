@@ -139,11 +139,20 @@ def test_api_key_file_sets_env_and_is_used(tmp_path, monkeypatch, config):
     assert scan_namer.os.environ["ANTHROPIC_API_KEY"] == "key-keyfile"
 
 
-def test_api_key_file_overrides_existing_env(tmp_path, monkeypatch, config):
+def test_env_wins_over_api_key_file(tmp_path, monkeypatch, config):
     key = tmp_path / "k"
     key.write_text('source ANTHROPIC_API_KEY="key-keyfile"\n')
     client = _keyfile_client(config, monkeypatch, tmp_path, str(key))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-stale-env")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-env")
+    assert client._get_api_key() == "key-env"
+
+
+def test_api_key_file_wins_over_app_dir_file(tmp_path, monkeypatch, config):
+    key = tmp_path / "keys" / "k"
+    key.parent.mkdir()
+    key.write_text("key-keyfile\n")
+    client = _keyfile_client(config, monkeypatch, tmp_path, str(key))
+    (tmp_path / "ANTHROPIC_API_KEY").write_text("key-appdir\n")
     assert client._get_api_key() == "key-keyfile"
 
 
@@ -160,19 +169,19 @@ def test_api_key_file_expands_env_vars_and_tilde(tmp_path, monkeypatch, config):
     assert client._get_api_key() == "key-expanded"
 
 
-def test_api_key_file_missing_falls_back_to_env(tmp_path, monkeypatch, config, caplog):
+def test_api_key_file_missing_falls_back_to_app_dir(tmp_path, monkeypatch, config, caplog):
     client = _keyfile_client(config, monkeypatch, tmp_path, str(tmp_path / "absent"))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-env")
-    assert client._get_api_key() == "key-env"
+    (tmp_path / "ANTHROPIC_API_KEY").write_text("key-appdir\n")
+    assert client._get_api_key() == "key-appdir"
     assert "not found" in caplog.text
 
 
-def test_api_key_file_without_key_falls_back_to_env(tmp_path, monkeypatch, config):
+def test_api_key_file_without_key_falls_back_to_app_dir(tmp_path, monkeypatch, config):
     key = tmp_path / "k"
     key.write_text("A=1\nB=2\n")
     client = _keyfile_client(config, monkeypatch, tmp_path, str(key))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-env")
-    assert client._get_api_key() == "key-env"
+    (tmp_path / "ANTHROPIC_API_KEY").write_text("key-appdir\n")
+    assert client._get_api_key() == "key-appdir"
 
 
 @pytest.mark.parametrize(
