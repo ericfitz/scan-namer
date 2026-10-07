@@ -206,3 +206,10 @@ def test_lmstudio_uses_api_key_file(tmp_path, monkeypatch, config):
     client.config = config
     client.provider = "lmstudio"
     assert client._get_api_key() == "key-lm"
+
+
+@pytest.mark.parametrize("raw", ["abc123==", "abc123="])
+def test_parse_any_name_raw_key_with_equals(tmp_path, raw):
+    f = tmp_path / "K"
+    f.write_text(raw + "\n")
+    assert _client()._parse_secret_file(str(f), "K", any_name=True) == raw

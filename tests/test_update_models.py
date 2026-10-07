@@ -141,6 +141,13 @@ class ReadApiKeyFileTests(unittest.TestCase):
                 result = update_models.read_api_key_file("$UM_TEST_KEYS/KEYFILE", "K")
         self.assertEqual(result, "key-env-path")
 
+    def test_raw_key_with_equals(self):
+        with tempfile.TemporaryDirectory() as root:
+            for raw in ("abc123==", "abc123="):
+                path = self._write(root, raw + "\n")
+                with self.subTest(raw=raw):
+                    self.assertEqual(update_models.read_api_key_file(path, "K"), raw)
+
     def test_missing_file_returns_none(self):
         with tempfile.TemporaryDirectory() as root:
             path = os.path.join(root, "absent")

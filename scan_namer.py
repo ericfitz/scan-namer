@@ -662,7 +662,7 @@ class BaseLLMClient:
         Surrounding single/double quotes on an assignment value are stripped.
 
         With ``any_name``, a file whose only assignment names a different
-        variable yields that value; several non-matching assignments are
+        upper-case variable yields that value; several such assignments are
         ambiguous and yield None.
         """
         try:
@@ -677,6 +677,9 @@ class BaseLLMClient:
         )
         assignments = [m for m in (assign.match(line) for line in lines) if m]
         matching = [m for m in assignments if m.group(1) == env_var_name]
+        # Only upper-case names count as other variables, so a raw key such
+        # as "abc123==" is not mistaken for an assignment.
+        assignments = [m for m in assignments if re.fullmatch(r"[A-Z_][A-Z0-9_]*", m.group(1))]
         if matching:
             chosen = matching[0]
         elif any_name and len(assignments) == 1:

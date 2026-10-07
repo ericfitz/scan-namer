@@ -137,7 +137,7 @@ def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
     `~` and `$VAR` references in the path are expanded and the result must be
     absolute; anything else raises ValueError. The file holds a raw key or a
     shell assignment (`[export|source] NAME=value`); an assignment of
-    `env_name` wins, else a lone assignment of any name. A missing or
+    `env_name` wins, else a lone assignment of another upper-case name. A missing or
     unreadable file, or one with several non-matching assignments, logs a
     warning and returns None.
     """
@@ -159,6 +159,9 @@ def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
 
     matches = [m for m in (_EXPORT_LINE_RE.match(line) for line in lines) if m]
     named = [m for m in matches if m.group("name") == env_name]
+    # Only upper-case names count as other variables, so a raw key such as
+    # "abc123==" is not mistaken for an assignment.
+    matches = [m for m in matches if re.fullmatch(r"[A-Z_][A-Z0-9_]*", m.group("name"))]
     if named:
         chosen = named[0]
     elif len(matches) == 1:
