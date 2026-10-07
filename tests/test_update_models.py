@@ -6,7 +6,10 @@ import socket
 import sys
 import tempfile
 import unittest
+from typing import ClassVar
 from unittest import mock
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir))
 
@@ -54,15 +57,19 @@ class ResolveApiKeyTests(unittest.TestCase):
         assert result == "abc 123"
 
     def test_falls_back_to_environ_when_file_missing(self):
-        with tempfile.TemporaryDirectory() as root:
-            with mock.patch.dict(os.environ, {"MY_KEY": "from-env"}):
-                result = update_models.resolve_api_key("MY_KEY", project_root=root)
+        with (
+            tempfile.TemporaryDirectory() as root,
+            mock.patch.dict(os.environ, {"MY_KEY": "from-env"}),
+        ):
+            result = update_models.resolve_api_key("MY_KEY", project_root=root)
         assert result == "from-env"
 
     def test_returns_none_when_neither_file_nor_env(self):
-        with tempfile.TemporaryDirectory() as root:
-            with mock.patch.dict(os.environ, {}, clear=True):
-                result = update_models.resolve_api_key("MY_KEY", project_root=root)
+        with (
+            tempfile.TemporaryDirectory() as root,
+            mock.patch.dict(os.environ, {}, clear=True),
+        ):
+            result = update_models.resolve_api_key("MY_KEY", project_root=root)
         assert result is None
 
     def test_file_takes_precedence_over_env(self):
@@ -157,7 +164,7 @@ class ReadApiKeyFileTests(unittest.TestCase):
     def test_rejects_invalid_paths(self):
         os.environ.pop("UM_UNSET_VAR_XYZ", None)
         for bad in ("relative/KEY", "", 7, "$UM_UNSET_VAR_XYZ/KEY"):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
+            with self.subTest(bad=bad), pytest.raises(ValueError, match="api_key_file"):
                 update_models.read_api_key_file(bad, "MY_KEY")
 
 
@@ -257,7 +264,7 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
 
 
 class LookupPdfSupportTests(unittest.TestCase):
-    REGISTRY = {
+    REGISTRY: ClassVar[dict] = {
         "claude-sonnet-4-20250514": {
             "supports_pdf_input": True,
             "litellm_provider": "anthropic",
@@ -299,12 +306,12 @@ class LookupPdfSupportTests(unittest.TestCase):
     def test_false_flag_returns_false(self):
         registry = {"some-model": {"supports_pdf_input": False}}
         assert (
-            update_models.lookup_pdf_support(registry, "some-model", "openai") == False
+            update_models.lookup_pdf_support(registry, "some-model", "openai") is False
         )
 
 
 class LookupVisionSupportTests(unittest.TestCase):
-    REGISTRY = {
+    REGISTRY: ClassVar[dict] = {
         "claude-sonnet-4-20250514": {
             "supports_vision": True,
             "litellm_provider": "anthropic",
@@ -351,7 +358,7 @@ class LookupVisionSupportTests(unittest.TestCase):
         registry = {"some-model": {"supports_vision": False}}
         assert (
             update_models.lookup_vision_support(registry, "some-model", "openai")
-            == False
+            is False
         )
 
 
@@ -614,7 +621,7 @@ class AtomicWriteJsonTests(unittest.TestCase):
             # Pre-existing content should survive a failed write
             with open(path, "w") as f:
                 f.write('{"original": true}\n')
-            with self.assertRaises(TypeError):
+            with pytest.raises(TypeError):
                 update_models.atomic_write_json(path, {"bad": Unserializable()})
             with open(path) as f:
                 assert f.read() == '{"original": true}\n'
@@ -836,7 +843,7 @@ class OpenAICompatProviderTests(unittest.TestCase):
         )
         with (
             mock.patch("update_models.requests.get", return_value=fake_response),
-            self.assertRaises(update_models.requests.HTTPError),
+            pytest.raises(update_models.requests.HTTPError),
         ):
             client.list_models()
 
@@ -910,7 +917,7 @@ class OpenAICompatProviderTests(unittest.TestCase):
 
     def test_probe_raises_on_unknown_kind(self):
         client = self._make_client()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError, match="unknown probe kind"):
             client.probe("some-model", "video")
 
 
@@ -994,7 +1001,7 @@ class GoogleProviderListModelsTests(unittest.TestCase):
         )
         with (
             mock.patch("update_models.requests.get", return_value=fake_response),
-            self.assertRaises(update_models.requests.HTTPError),
+            pytest.raises(update_models.requests.HTTPError),
         ):
             client.list_models()
 
@@ -1286,7 +1293,7 @@ class CapabilityRejectionTests(unittest.TestCase):
             "Image inputs are not supported by this model.", "pdf"
         )
 
-    def test_invalid_b64_image_with_kind_image_is_NOT_a_rejection(self):
+    def test_invalid_b64_image_with_kind_image_is_not_a_rejection(self):
         # When probing image, "Invalid base64-encoded image" is a real error
         # (our PNG was bad), not a "doesn't support image" signal.
         assert not update_models._is_capability_rejection(

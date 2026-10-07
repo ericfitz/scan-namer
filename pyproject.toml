@@ -33,7 +33,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
-extend-exclude = ["graphify-out"]
+extend-exclude = ["docs"]  # design records; code snippets there are not maintained code
 
 [tool.ruff.lint]
 select = [

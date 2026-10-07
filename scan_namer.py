@@ -25,6 +25,7 @@ import pytesseract
 # ignore lint errors related to unresolved imports; using uv to avoid using venv
 import requests
 from dotenv import load_dotenv
+from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -225,7 +226,7 @@ class GoogleDriveManager:
                 try:
                     creds.refresh(Request())
                     logger.info("Refreshed Google Drive credentials")
-                except Exception as e:
+                except GoogleAuthError as e:
                     logger.warning(f"Failed to refresh credentials: {e}")
                     creds = None
 
@@ -235,7 +236,8 @@ class GoogleDriveManager:
                         f"Google Drive credentials file {creds_file} not found"
                     )
                     logger.error(
-                        "Please download OAuth 2.0 credentials from Google Cloud Console"
+                        "Please download OAuth 2.0 credentials from Google Cloud "
+                        "Console"
                     )
                     sys.exit(1)
 
@@ -258,7 +260,10 @@ class GoogleDriveManager:
             logger.error("Google Drive service not initialized")
             return []
         try:
-            query = f"'{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            query = (
+                f"'{parent_id}' in parents and "
+                "mimeType='application/vnd.google-apps.folder' and trashed=false"
+            )
             results = (
                 self.service.files()
                 .list(q=query, fields="files(id,name,parents)")
@@ -320,7 +325,8 @@ class GoogleDriveManager:
             return selected["id"]
         if not matches:
             logger.warning(
-                f"Folder '{name}' not found in Google Drive root; showing selection menu"
+                f"Folder '{name}' not found in Google Drive root; showing selection "
+                "menu"
             )
         else:
             logger.warning(
@@ -334,7 +340,10 @@ class GoogleDriveManager:
             logger.error("Google Drive service not initialized")
             return []
         try:
-            query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
+            query = (
+                f"'{folder_id}' in parents and mimeType='application/pdf' and "
+                "trashed=false"
+            )
             results = (
                 self.service.files()
                 .list(
@@ -362,7 +371,7 @@ class GoogleDriveManager:
                 downloader = MediaIoBaseDownload(f, request)
                 done = False
                 while not done:
-                    status, done = downloader.next_chunk()
+                    _status, done = downloader.next_chunk()
             logger.debug(f"Downloaded file to {output_path}")
             return True
         except HttpError as e:
@@ -404,7 +413,7 @@ class GoogleDriveManager:
             logger.error(f"Error updating file: {e}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error updating file: {e}")
+            logger.exception(f"Unexpected error updating file: {e}")
             return False
 
 
@@ -423,7 +432,7 @@ class PDFProcessor:
                 reader = pypdf.PdfReader(f)
                 return len(reader.pages)
         except Exception as e:
-            logger.error(f"Error reading PDF {pdf_path}: {e}")
+            logger.exception(f"Error reading PDF {pdf_path}: {e}")
             return 0
 
     def extract_pages(
@@ -432,10 +441,7 @@ class PDFProcessor:
         """Extract first N pages from PDF to a new file."""
         if num_pages is None:
             extraction_pages = self.config.get("pdf.extraction_pages", 3)
-            if isinstance(extraction_pages, int):
-                num_pages = extraction_pages
-            else:
-                num_pages = 3
+            num_pages = extraction_pages if isinstance(extraction_pages, int) else 3
 
         try:
             with open(input_path, "rb") as input_file:
@@ -452,17 +458,14 @@ class PDFProcessor:
             logger.debug(f"Extracted {pages_to_extract} pages to {output_path}")
             return True
         except Exception as e:
-            logger.error(f"Error extracting pages: {e}")
+            logger.exception(f"Error extracting pages: {e}")
             return False
 
     def extract_text(self, pdf_path: str, max_pages: int | None = None) -> str:
         """Extract text content from PDF for LLM analysis."""
         if max_pages is None:
             extraction_pages = self.config.get("pdf.extraction_pages", 3)
-            if isinstance(extraction_pages, int):
-                max_pages = extraction_pages
-            else:
-                max_pages = 3
+            max_pages = extraction_pages if isinstance(extraction_pages, int) else 3
 
         try:
             text_content = []
@@ -480,12 +483,13 @@ class PDFProcessor:
 
             full_text = "\n\n".join(text_content)
             logger.debug(
-                f"Extracted {len(full_text)} characters of text from {pages_to_process} pages"
+                f"Extracted {len(full_text)} characters of text from "
+                f"{pages_to_process} pages"
             )
             return full_text
 
         except Exception as e:
-            logger.error(f"Error extracting text from PDF {pdf_path}: {e}")
+            logger.exception(f"Error extracting text from PDF {pdf_path}: {e}")
             return ""
 
     def should_extract(self, page_count: int) -> bool:
@@ -520,14 +524,16 @@ class PDFProcessor:
             is_image_only = avg_text_per_page < min_text_per_page
 
             logger.debug(
-                f"PDF text analysis: {total_text_length} chars across {page_count} pages "
-                f"(avg: {avg_text_per_page:.1f} chars/page). Image-only: {is_image_only}"
+                f"PDF text analysis: {total_text_length} chars across {page_count} "
+                "pages "
+                f"(avg: {avg_text_per_page:.1f} chars/page). Image-only: "
+                f"{is_image_only}"
             )
 
             return is_image_only
 
         except Exception as e:
-            logger.error(f"Error detecting image-only PDF: {e}")
+            logger.exception(f"Error detecting image-only PDF: {e}")
             return False
 
     def perform_ocr(self, pdf_path: str, language: str | None = None) -> list[str]:
@@ -551,14 +557,14 @@ class PDFProcessor:
                     text = pytesseract.image_to_string(image, lang=language)
                     ocr_results.append(text)
                 except Exception as e:
-                    logger.error(f"OCR failed on page {i + 1}: {e}")
+                    logger.exception(f"OCR failed on page {i + 1}: {e}")
                     ocr_results.append("")
 
             logger.info(f"OCR completed on {len(images)} pages")
             return ocr_results
 
         except Exception as e:
-            logger.error(f"Error performing OCR: {e}")
+            logger.exception(f"Error performing OCR: {e}")
             return []
 
     def create_searchable_pdf(
@@ -590,7 +596,7 @@ class PDFProcessor:
                 writer.add_metadata(
                     {
                         "/OCR": "Tesseract",
-                        "/OCRDate": str(datetime.now()),
+                        "/OCRDate": str(datetime.now().astimezone()),
                     }
                 )
 
@@ -602,7 +608,7 @@ class PDFProcessor:
                 return True
 
         except Exception as e:
-            logger.error(f"Error creating searchable PDF: {e}")
+            logger.exception(f"Error creating searchable PDF: {e}")
             return False
 
 
@@ -649,7 +655,7 @@ class BaseLLMClient:
             with open(pdf_path, "rb") as pdf_file:
                 pdf_bytes = pdf_file.read()
                 return base64.b64encode(pdf_bytes).decode("utf-8")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error encoding PDF to base64: {e}")
             return ""
 
@@ -845,7 +851,7 @@ class BaseLLMClient:
             )
             return png_pages
         except Exception as e:
-            logger.error(f"Failed to rasterize PDF {pdf_path}: {e}")
+            logger.exception(f"Failed to rasterize PDF {pdf_path}: {e}")
             return []
 
     def get_total_costs(self) -> dict[str, int]:
@@ -920,7 +926,8 @@ class XAIClient(BaseLLMClient):
             file_id = upload_data.get("id")
             if not file_id:
                 logger.error(
-                    f"xAI Files API returned no file id. Response: {upload_resp.text[:300]}"
+                    "xAI Files API returned no file id. Response: "
+                    f"{upload_resp.text[:300]}"
                 )
                 return None, {}
             logger.info(f"xAI file uploaded, file_id={file_id}")
@@ -1004,7 +1011,8 @@ class XAIClient(BaseLLMClient):
 
             if not suggested_name:
                 logger.error(
-                    f"xAI Responses API returned no text. Full response: {str(result)[:500]}"
+                    "xAI Responses API returned no text. Full response: "
+                    f"{str(result)[:500]}"
                 )
                 return None, cost_info
 
@@ -1017,7 +1025,7 @@ class XAIClient(BaseLLMClient):
             logger.error(f"xAI Files/Responses API HTTP {status} error: {body[:300]}")
             return None, {}
         except Exception as e:
-            logger.error(f"xAI Files/Responses API error: {e}")
+            logger.exception(f"xAI Files/Responses API error: {e}")
             return None, {}
         finally:
             if file_id:
@@ -1102,7 +1110,7 @@ class XAIClient(BaseLLMClient):
             )
             return suggested_name, cost_info
         except Exception as e:
-            logger.error(f"X.AI rasterized-PDF analysis error: {e}")
+            logger.exception(f"X.AI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
@@ -1125,7 +1133,8 @@ class XAIClient(BaseLLMClient):
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 if strategy == "none":
                     logger.error(
-                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Model {self.model} has pdf_strategy='none'; cannot process "
+                        "PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
@@ -1145,7 +1154,10 @@ class XAIClient(BaseLLMClient):
                 "Content-Type": "application/json",
             }
 
-            user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
+            user_message = (
+                f"{prompt_config.get('user_prompt', '')}\n\nDocument "
+                f"content:\n{document_text}"
+            )
             messages = [
                 {
                     "role": "system",
@@ -1185,7 +1197,7 @@ class XAIClient(BaseLLMClient):
             return suggested_name, cost_info
 
         except Exception as e:
-            logger.error(f"X.AI API error: {e}")
+            logger.exception(f"X.AI API error: {e}")
             return None, {}
 
 
@@ -1210,7 +1222,8 @@ class AnthropicClient(BaseLLMClient):
             self.client = anthropic.Anthropic(api_key=self.api_key)
         except ImportError:
             logger.error(
-                "Anthropic library not installed. Please install with: pip install anthropic"
+                "Anthropic library not installed. Please install with: pip install "
+                "anthropic"
             )
             sys.exit(1)
 
@@ -1269,7 +1282,7 @@ class AnthropicClient(BaseLLMClient):
             )
             return suggested_name, cost_info
         except Exception as e:
-            logger.error(f"Anthropic rasterized-PDF analysis error: {e}")
+            logger.exception(f"Anthropic rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
@@ -1286,7 +1299,10 @@ class AnthropicClient(BaseLLMClient):
 
             # Prepare message content based on available input
             if document_text:
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
+                user_message = (
+                    f"{prompt_config.get('user_prompt', '')}\n\nDocument "
+                    f"content:\n{document_text}"
+                )
                 messages = [{"role": "user", "content": user_message}]
             elif pdf_path:
                 strategy = self.pdf_strategy()
@@ -1295,7 +1311,10 @@ class AnthropicClient(BaseLLMClient):
                     if not pdf_base64:
                         return None, {}
 
-                    user_message = f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze this PDF document:"
+                    user_message = (
+                        f"{prompt_config.get('user_prompt', '')}\n\nPlease analyze "
+                        "this PDF document:"
+                    )
                     messages = [
                         {
                             "role": "user",
@@ -1316,13 +1335,15 @@ class AnthropicClient(BaseLLMClient):
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 elif strategy == "none":
                     logger.error(
-                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Model {self.model} has pdf_strategy='none'; cannot process "
+                        "PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
                 else:
                     logger.error(
-                        f"Anthropic client does not implement pdf_strategy='{strategy}' "
+                        "Anthropic client does not implement "
+                        f"pdf_strategy='{strategy}' "
                         f"for model {self.model}."
                     )
                     return None, {}
@@ -1352,7 +1373,7 @@ class AnthropicClient(BaseLLMClient):
             return suggested_name, cost_info
 
         except Exception as e:
-            logger.error(f"Anthropic API error: {e}")
+            logger.exception(f"Anthropic API error: {e}")
             return None, {}
 
 
@@ -1399,7 +1420,7 @@ class OpenAIClient(BaseLLMClient):
     def _analyze_via_rasterized_pages(
         self, pdf_path: str, prompt_config: dict[str, Any]
     ) -> tuple[str | None, dict[str, Any]]:
-        """Rasterize PDF pages to PNG and analyze via OpenAI chat/completions image_url."""
+        """Rasterize PDF pages to PNG and analyze via OpenAI chat image_url."""
         try:
             png_pages = self._rasterize_pdf_to_pngs(pdf_path)
             if not png_pages:
@@ -1445,7 +1466,7 @@ class OpenAIClient(BaseLLMClient):
             )
             return suggested_name, cost_info
         except Exception as e:
-            logger.error(f"OpenAI rasterized-PDF analysis error: {e}")
+            logger.exception(f"OpenAI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def _analyze_pdf_via_files_api(
@@ -1515,7 +1536,7 @@ class OpenAIClient(BaseLLMClient):
             logger.info(f"OpenAI suggested filename: {suggested_name}")
             return suggested_name, cost_info
         except Exception as e:
-            logger.error(f"OpenAI Files/Responses API error: {e}")
+            logger.exception(f"OpenAI Files/Responses API error: {e}")
             return None, {}
         finally:
             if file_id:
@@ -1523,7 +1544,9 @@ class OpenAIClient(BaseLLMClient):
                     self.client.files.delete(file_id)
                     logger.debug(f"Deleted OpenAI file {file_id}")
                 except Exception as e:
-                    logger.warning(f"Could not delete OpenAI file {file_id}: {e}")
+                    logger.warning(
+                        f"Could not delete OpenAI file {file_id}: {e}", exc_info=True
+                    )
 
     def analyze_document(
         self,
@@ -1539,7 +1562,10 @@ class OpenAIClient(BaseLLMClient):
 
             # Prepare message content based on available input
             if document_text:
-                user_message = f"{prompt_config.get('user_prompt', '')}\n\nDocument content:\n{document_text}"
+                user_message = (
+                    f"{prompt_config.get('user_prompt', '')}\n\nDocument "
+                    f"content:\n{document_text}"
+                )
                 messages = [
                     {
                         "role": "system",
@@ -1555,7 +1581,8 @@ class OpenAIClient(BaseLLMClient):
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 if strategy == "none":
                     logger.error(
-                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Model {self.model} has pdf_strategy='none'; cannot process "
+                        "PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
@@ -1584,7 +1611,7 @@ class OpenAIClient(BaseLLMClient):
             return suggested_name, cost_info
 
         except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
+            logger.exception(f"OpenAI API error: {e}")
             return None, {}
 
 
@@ -1687,7 +1714,8 @@ class GoogleClient(BaseLLMClient):
 
         except ImportError:
             logger.error(
-                "Google Gen AI library not installed. Please install with: pip install google-genai"
+                "Google Gen AI library not installed. Please install with: pip "
+                "install google-genai"
             )
             sys.exit(1)
 
@@ -1740,7 +1768,7 @@ class GoogleClient(BaseLLMClient):
             )
             return suggested_name, cost_info
         except Exception as e:
-            logger.error(f"Google AI rasterized-PDF analysis error: {e}")
+            logger.exception(f"Google AI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
@@ -1760,23 +1788,30 @@ class GoogleClient(BaseLLMClient):
 
             # Prepare content based on available input
             if document_text:
-                full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}"
+                full_prompt = (
+                    f"{system_prompt}\n\n{user_prompt}\n\nDocument "
+                    f"content:\n{document_text}"
+                )
                 contents = [full_prompt]
             elif pdf_path:
                 strategy = self.pdf_strategy()
                 if strategy == "genai_files_upload":
                     try:
                         uploaded_file = self.client.files.upload(file=pdf_path)
-                        full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
+                        full_prompt = (
+                            f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this "
+                            "PDF document:"
+                        )
                         contents = [full_prompt, uploaded_file]
                     except Exception as upload_error:
-                        logger.error(f"Failed to upload PDF: {upload_error}")
+                        logger.exception(f"Failed to upload PDF: {upload_error}")
                         return None, {}
                 elif strategy == "rasterize_to_images":
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 elif strategy == "none":
                     logger.error(
-                        f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
+                        f"Model {self.model} has pdf_strategy='none'; cannot process "
+                        "PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
@@ -1804,7 +1839,8 @@ class GoogleClient(BaseLLMClient):
             if document_text:
                 estimated_prompt_tokens = (
                     len(
-                        f"{system_prompt}\n\n{user_prompt}\n\nDocument content:\n{document_text}"
+                        f"{system_prompt}\n\n{user_prompt}\n\nDocument "
+                        f"content:\n{document_text}"
                     )
                     // 4
                 )
@@ -1827,7 +1863,7 @@ class GoogleClient(BaseLLMClient):
             return suggested_name, cost_info
 
         except Exception as e:
-            logger.error(f"Google AI API error: {e}")
+            logger.exception(f"Google AI API error: {e}")
             return None, {}
 
 
@@ -1951,7 +1987,8 @@ class ScanNamer:
         # Validate --no-ocr flag with model capabilities
         if self.no_ocr and not self.llm_client.accepts_pdf():
             logger.warning(
-                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which has pdf_strategy='none'."
+                f"Warning: --no-ocr flag used with model '{self.llm_client.model}' "
+                "which has pdf_strategy='none'."
             )
             logger.warning(
                 "PDF fallback will not work. Consider using a PDF-capable model."
@@ -1970,7 +2007,7 @@ class ScanNamer:
 
         # Create custom formatter for RFC3339/ISO8601 with milliseconds
         class RFC3339Formatter(logging.Formatter):
-            def formatTime(self, record, datefmt=None) -> str:
+            def formatTime(self, record, datefmt=None) -> str:  # noqa: N802 - overrides logging.Formatter API
                 dt = datetime.datetime.fromtimestamp(
                     record.created, tz=datetime.timezone.utc
                 )
@@ -2081,7 +2118,8 @@ class ScanNamer:
                 temp_pdf_path
             ):
                 logger.info(
-                    "Detected image-only PDF, performing OCR to create searchable PDF..."
+                    "Detected image-only PDF, performing OCR to create searchable "
+                    "PDF..."
                 )
 
                 # Perform OCR
@@ -2101,7 +2139,8 @@ class ScanNamer:
                                 file_id, searchable_pdf_path
                             ):
                                 logger.info(
-                                    "Successfully uploaded searchable PDF to Google Drive"
+                                    "Successfully uploaded searchable PDF to Google "
+                                    "Drive"
                                 )
                             else:
                                 logger.error(
@@ -2140,7 +2179,8 @@ class ScanNamer:
                 # Try to extract text from PDF for LLM analysis
                 if self.pdf_processor.should_extract(page_count):
                     logger.info(
-                        f"Document has {page_count} pages, extracting text from first {self.pdf_processor.extraction_pages}"
+                        f"Document has {page_count} pages, extracting text from first "
+                        f"{self.pdf_processor.extraction_pages}"
                     )
                     document_text = self.pdf_processor.extract_text(
                         temp_pdf_path, self.pdf_processor.extraction_pages
@@ -2152,7 +2192,8 @@ class ScanNamer:
                 # Check if text extraction failed
                 if not document_text.strip():
                     logger.warning(
-                        "No text content extracted from PDF - falling back to PDF upload"
+                        "No text content extracted from PDF - falling back to PDF "
+                        "upload"
                     )
                     use_pdf_upload = True
                     document_text = None
@@ -2171,7 +2212,9 @@ class ScanNamer:
                     ):
                         pdf_path_for_upload = shortened_pdf_path
                         logger.info(
-                            f"Using shortened PDF ({self.pdf_processor.extraction_pages} pages) for upload"
+                            "Using shortened PDF "
+                            f"({self.pdf_processor.extraction_pages} pages) for "
+                            "upload"
                         )
                     else:
                         pdf_path_for_upload = temp_pdf_path
@@ -2264,7 +2307,8 @@ class ScanNamer:
             # Validate required files exist
             if not os.path.exists(self.config.get("google_drive.credentials_file")):
                 logger.error(
-                    f"Google Drive credentials file not found: {self.config.get('google_drive.credentials_file')}"
+                    "Google Drive credentials file not found: "
+                    f"{self.config.get('google_drive.credentials_file')}"
                 )
                 logger.error(
                     "Please download OAuth 2.0 credentials from Google Cloud Console"
@@ -2321,7 +2365,7 @@ class ScanNamer:
                         else:
                             failed += 1
                     except Exception as e:
-                        logger.error(
+                        logger.exception(
                             f"Unexpected error processing {file_info['name']}: {e}"
                         )
                         failed += 1
@@ -2370,7 +2414,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        help="Override LLM model (e.g., grok-4-0709, claude-sonnet-4-20250514, gpt-4.1, gemini-2.5-flash)",
+        help=(
+            "Override LLM model (e.g., grok-4-0709, claude-sonnet-4-20250514, "
+            "gpt-4.1, gemini-2.5-flash)"
+        ),
     )
     parser.add_argument(
         "--list-providers",
@@ -2385,7 +2432,10 @@ def main() -> None:
     parser.add_argument(
         "--no-ocr",
         action="store_true",
-        help="Skip text extraction and upload PDF files directly to LLM (requires PDF-capable model)",
+        help=(
+            "Skip text extraction and upload PDF files directly to LLM (requires "
+            "PDF-capable model)"
+        ),
     )
     parser.add_argument(
         "--tokens",
@@ -2408,7 +2458,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--folder",
-        help="Google Drive folder name to use (overrides config google_drive.folder_name); skips the menu when uniquely matched",
+        help=(
+            "Google Drive folder name to use (overrides config "
+            "google_drive.folder_name); skips the menu when uniquely matched"
+        ),
         metavar="NAME",
     )
 
@@ -2422,14 +2475,14 @@ def main() -> None:
             current_provider = config.get("llm.provider")
 
             print("Available LLM providers:")
-            for provider in providers.keys():
+            for provider in providers:
                 marker = " (current)" if provider == current_provider else ""
                 print(f"  - {provider}{marker}")
 
             if not providers:
                 print("  No providers configured in config.json")
             return
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError) as e:
             print(f"Error loading configuration: {e}")
             sys.exit(1)
 
@@ -2469,7 +2522,7 @@ def main() -> None:
             if not providers:
                 print("  No providers configured in config.json")
             return
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError) as e:
             print(f"Error loading configuration: {e}")
             sys.exit(1)
 
@@ -2494,7 +2547,7 @@ def main() -> None:
         print("\nOperation cancelled by user")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.exception(f"Fatal error: {e}")
         sys.exit(1)
 
 

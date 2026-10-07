@@ -19,6 +19,7 @@ uses to dispatch PDF requests.
 
 import argparse
 import base64
+import contextlib
 import copy
 import json
 import logging
@@ -395,7 +396,8 @@ def format_model_line(
         return f"\t{ASCII_X}  Model: {model}  [ Error: {error} ]"
     return (
         f"\t{ASCII_CHECK}  Model: {model}  "
-        f"[ pdf: {supports_pdf} | vision: {supports_vision} | strategy: {pdf_strategy} ]"
+        f"[ pdf: {supports_pdf} | vision: {supports_vision} | "
+        f"strategy: {pdf_strategy} ]"
     )
 
 
@@ -667,14 +669,13 @@ class XAIProvider(OpenAICompatProvider):
             return ProbeResult(succeeded=False, supports=None, error=str(e))
         finally:
             if file_id:
-                try:
+                # best-effort cleanup
+                with contextlib.suppress(requests.RequestException):
                     requests.delete(
                         self._files_url() + f"/{file_id}",
                         headers=headers,
                         timeout=15,
                     )
-                except requests.RequestException:
-                    pass  # best-effort cleanup
 
 
 class LMStudioProvider(OpenAICompatProvider):
@@ -683,7 +684,8 @@ class LMStudioProvider(OpenAICompatProvider):
     @property
     def _rich_models_url(self) -> str | None:
         # The LMStudio-specific endpoint that returns type/capabilities.
-        # Derive from api_endpoint by replacing /v1/chat/completions with /api/v0/models.
+        # Derive from api_endpoint by replacing /v1/chat/completions with
+        # /api/v0/models.
         # Fall back gracefully if the endpoint doesn't match the expected shape.
         suffix = "/v1/chat/completions"
         if self.api_endpoint.endswith(suffix):
