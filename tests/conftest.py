@@ -78,6 +78,7 @@ def _isolate_env(monkeypatch):
         "PDF_EXTRACTION_PAGES",
         "GOOGLE_DRIVE_CREDENTIALS_FILE",
         "GOOGLE_DRIVE_TOKEN_FILE",
+        "LOG_FILE",
     ]:
         monkeypatch.delenv(var, raising=False)
 

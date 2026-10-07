@@ -93,7 +93,7 @@ class ConfigManager:
     """Manages configuration loading and validation."""
 
     def __init__(self, config_file: str = "config.json"):
-        self.config_file = config_file
+        self.config_file = expand_config_path("config file", config_file)
         self.config = self._load_config()
         self._validate_config()
 
@@ -1995,13 +1995,7 @@ class ScanNamer:
         self.enable_ocr_embedding = enable_ocr_embedding
         self.folder_name = folder_name
 
-        if download_dir:
-            self.download_dir = os.path.expanduser(download_dir)
-            if not os.path.isdir(self.download_dir):
-                logger.error(f"Download directory does not exist: {self.download_dir}")
-                sys.exit(1)
-        else:
-            self.download_dir = None
+        self.download_dir = self._resolve_download_dir(download_dir)
 
         self._setup_logging()
 
@@ -2025,6 +2019,17 @@ class ScanNamer:
             )
             self._print_pdf_capable_models()
 
+    @staticmethod
+    def _resolve_download_dir(download_dir: str | None) -> str | None:
+        """Expand ``~`` and ``$VAR`` in ``--download``; exit if it is missing."""
+        if not download_dir:
+            return None
+        path = expand_config_path("--download", download_dir)
+        if not os.path.isdir(path):
+            logger.error(f"Download directory does not exist: {path}")
+            sys.exit(1)
+        return path
+
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
         import datetime
@@ -2033,7 +2038,9 @@ class ScanNamer:
         log_format = self.config.get(
             "logging.format", "%(asctime)s - %(levelname)s - %(message)s"
         )
-        log_file = self.config.get("logging.file", "scan_namer.log")
+        log_file = expand_config_path(
+            "logging.file", self.config.get("logging.file", "scan_namer.log")
+        )
 
         # Create custom formatter for RFC3339/ISO8601 with milliseconds
         class RFC3339Formatter(logging.Formatter):

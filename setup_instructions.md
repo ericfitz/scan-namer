@@ -174,6 +174,9 @@ GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_,img_
 - `--tokens N`: Override max_tokens limit (e.g., `--tokens 3000` for longer responses)
 - `--verbose`: Enable debug logging
 - `--config FILE`: Use custom config file
+- `--download [DIR]`: Download renamed files to `DIR` (default `~/Downloads`; the `./scan-namer` wrapper passes `~/Downloads/scans`)
+
+`--config`, `--download` and `logging.file` (or `LOG_FILE`) expand `~` and `$VAR` / `${VAR}`, like the Google Drive paths; a reference to an unset variable is an error.
 
 ### Model Selection
 - `--provider PROVIDER`: Choose LLM provider (xai, anthropic, openai, google)
