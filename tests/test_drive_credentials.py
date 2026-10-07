@@ -161,3 +161,33 @@ def test_write_token_tightens_existing_file(tmp_path):
     scan_namer.GoogleDriveManager._write_token(str(path), "new")
     assert path.read_text() == "new"
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_run_accepts_tilde_credentials_path(config, monkeypatch, tmp_path):
+    """run() must not re-check the raw, unexpanded credentials path.
+
+    Authentication already loaded the (expanded) file, so a ``~`` path in
+    config must not stop the run before folder selection.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".keys").mkdir()
+    (tmp_path / ".keys" / "credentials.json").write_text("{}")
+    _set(config, "credentials_file", "~/.keys/credentials.json")
+
+    calls = []
+
+    class FakeDrive:
+        def resolve_folder(self, name):
+            return None
+
+        def select_folder(self):
+            calls.append("select_folder")
+            return None
+
+    namer = object.__new__(scan_namer.ScanNamer)
+    namer.config = config
+    namer.drive_manager = FakeDrive()
+    namer.dry_run = True
+    namer.folder_name = None
+    namer.run()
+    assert calls == ["select_folder"]

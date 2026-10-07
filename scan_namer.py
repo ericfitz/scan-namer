@@ -2334,17 +2334,8 @@ class ScanNamer:
         try:
             logger.info("Starting Scan Namer")
 
-            # Validate required files exist
-            if not os.path.exists(self.config.get("google_drive.credentials_file")):
-                logger.error(
-                    "Google Drive credentials file not found: "
-                    f"{self.config.get('google_drive.credentials_file')}"
-                )
-                logger.error(
-                    "Please download OAuth 2.0 credentials from Google Cloud Console"
-                )
-                return
-
+            # The credentials file was already validated (with ~/$VAR
+            # expansion) when GoogleDriveManager authenticated in __init__.
             if self.dry_run:
                 logger.info("Running in DRY RUN mode - no files will be renamed")
 
