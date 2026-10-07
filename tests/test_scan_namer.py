@@ -22,14 +22,14 @@ class PreferIPv4Tests(unittest.TestCase):
         socket.getaddrinfo = lambda *a, **k: [v6, v4]
         scan_namer.prefer_ipv4()
         ordered = socket.getaddrinfo("example.com", 443)
-        self.assertEqual(ordered[0][0], socket.AF_INET)
-        self.assertEqual(ordered[1][0], socket.AF_INET6)
+        assert ordered[0][0] == socket.AF_INET
+        assert ordered[1][0] == socket.AF_INET6
 
     def test_is_idempotent(self):
         scan_namer.prefer_ipv4()
         once = socket.getaddrinfo
         scan_namer.prefer_ipv4()
-        self.assertIs(socket.getaddrinfo, once)
+        assert socket.getaddrinfo is once
 
 
 if __name__ == "__main__":

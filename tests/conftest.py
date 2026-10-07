@@ -7,7 +7,7 @@ import pytest
 # Ensure the repo root is importable even when pytest is invoked directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import scan_namer  # noqa: E402
+import scan_namer
 
 # A minimal but schema-valid config used across tests. Providers cover the
 # cases the resolution tests need: a normal provider with a model list and

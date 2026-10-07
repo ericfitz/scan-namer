@@ -1,9 +1,9 @@
 import json
 
 import pytest
+from conftest import MINIMAL_CONFIG
 
 import scan_namer
-from conftest import MINIMAL_CONFIG
 
 
 class StubClient:

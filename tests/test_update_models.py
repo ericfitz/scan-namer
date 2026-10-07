@@ -25,14 +25,14 @@ class PreferIPv4Tests(unittest.TestCase):
         socket.getaddrinfo = lambda *a, **k: [v6, v4]
         update_models.prefer_ipv4()
         ordered = socket.getaddrinfo("example.com", 443)
-        self.assertEqual(ordered[0][0], socket.AF_INET)
-        self.assertEqual(ordered[1][0], socket.AF_INET6)
+        assert ordered[0][0] == socket.AF_INET
+        assert ordered[1][0] == socket.AF_INET6
 
     def test_is_idempotent(self):
         update_models.prefer_ipv4()
         once = socket.getaddrinfo
         update_models.prefer_ipv4()
-        self.assertIs(socket.getaddrinfo, once)
+        assert socket.getaddrinfo is once
 
 
 class ResolveApiKeyTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write("export MY_KEY=abc123\n")
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "abc123")
+        assert result == "abc123"
 
     def test_strips_surrounding_quotes(self):
         with tempfile.TemporaryDirectory() as root:
@@ -50,19 +50,19 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write('export MY_KEY="abc 123"\n')
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "abc 123")
+        assert result == "abc 123"
 
     def test_falls_back_to_environ_when_file_missing(self):
         with tempfile.TemporaryDirectory() as root:
             with mock.patch.dict(os.environ, {"MY_KEY": "from-env"}):
                 result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "from-env")
+        assert result == "from-env"
 
     def test_returns_none_when_neither_file_nor_env(self):
         with tempfile.TemporaryDirectory() as root:
             with mock.patch.dict(os.environ, {}, clear=True):
                 result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertIsNone(result)
+        assert result is None
 
     def test_file_takes_precedence_over_env(self):
         with tempfile.TemporaryDirectory() as root:
@@ -71,7 +71,7 @@ class ResolveApiKeyTests(unittest.TestCase):
                 f.write("export MY_KEY=from-file\n")
             with mock.patch.dict(os.environ, {"MY_KEY": "from-env"}):
                 result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "from-file")
+        assert result == "from-file"
 
     def test_handles_file_without_export_keyword(self):
         # Some users may write `MY_KEY=value` without the export prefix
@@ -80,7 +80,7 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write("MY_KEY=plain\n")
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "plain")
+        assert result == "plain"
 
     def test_strips_single_quotes(self):
         with tempfile.TemporaryDirectory() as root:
@@ -88,7 +88,7 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write("export MY_KEY='abc 123'\n")
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "abc 123")
+        assert result == "abc 123"
 
     def test_handles_value_with_embedded_equals(self):
         with tempfile.TemporaryDirectory() as root:
@@ -96,7 +96,7 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write("export MY_KEY=base64==value\n")
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "base64==value")
+        assert result == "base64==value"
 
     def test_handles_empty_value(self):
         with tempfile.TemporaryDirectory() as root:
@@ -104,7 +104,7 @@ class ResolveApiKeyTests(unittest.TestCase):
             with open(path, "w") as f:
                 f.write("export MY_KEY=\n")
             result = update_models.resolve_api_key("MY_KEY", project_root=root)
-        self.assertEqual(result, "")
+        assert result == ""
 
 
 class ReadApiKeyFileTests(unittest.TestCase):
@@ -117,41 +117,41 @@ class ReadApiKeyFileTests(unittest.TestCase):
     def test_reads_source_form(self):
         with tempfile.TemporaryDirectory() as root:
             path = self._write(root, 'source MY_KEY="key-src"\n')
-            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-src")
+            assert update_models.read_api_key_file(path, "MY_KEY") == "key-src"
 
     def test_lone_assignment_of_other_name(self):
         with tempfile.TemporaryDirectory() as root:
             path = self._write(root, "export OTHER='key-o'\n")
-            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-o")
+            assert update_models.read_api_key_file(path, "MY_KEY") == "key-o"
 
     def test_ambiguous_assignments_return_none(self):
         with tempfile.TemporaryDirectory() as root:
             path = self._write(root, "A=1\nB=2\n")
-            self.assertIsNone(update_models.read_api_key_file(path, "MY_KEY"))
+            assert update_models.read_api_key_file(path, "MY_KEY") is None
 
     def test_raw_key(self):
         with tempfile.TemporaryDirectory() as root:
             path = self._write(root, "\nkey-raw\n")
-            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-raw")
+            assert update_models.read_api_key_file(path, "MY_KEY") == "key-raw"
 
     def test_expands_env_var(self):
         with tempfile.TemporaryDirectory() as root:
             self._write(root, "key-env-path\n")
             with mock.patch.dict(os.environ, {"UM_TEST_KEYS": root}):
                 result = update_models.read_api_key_file("$UM_TEST_KEYS/KEYFILE", "K")
-        self.assertEqual(result, "key-env-path")
+        assert result == "key-env-path"
 
     def test_raw_key_with_equals(self):
         with tempfile.TemporaryDirectory() as root:
             for raw in ("abc123==", "abc123="):
                 path = self._write(root, raw + "\n")
                 with self.subTest(raw=raw):
-                    self.assertEqual(update_models.read_api_key_file(path, "K"), raw)
+                    assert update_models.read_api_key_file(path, "K") == raw
 
     def test_missing_file_returns_none(self):
         with tempfile.TemporaryDirectory() as root:
             path = os.path.join(root, "absent")
-            self.assertIsNone(update_models.read_api_key_file(path, "MY_KEY"))
+            assert update_models.read_api_key_file(path, "MY_KEY") is None
 
     def test_rejects_invalid_paths(self):
         os.environ.pop("UM_UNSET_VAR_XYZ", None)
@@ -185,7 +185,7 @@ class BuildClientApiKeyTests(unittest.TestCase):
                 key = self._build(
                     {"api_endpoint": "https://x", "api_key_env": "UM_KEY", "api_key_file": path}
                 )
-        self.assertEqual(key, "from-env")
+        assert key == "from-env"
 
     def test_api_key_file_used_when_env_unset(self):
         with tempfile.TemporaryDirectory() as root:
@@ -195,7 +195,7 @@ class BuildClientApiKeyTests(unittest.TestCase):
                 key = self._build(
                     {"api_endpoint": "https://x", "api_key_env": "UM_KEY", "api_key_file": path}
                 )
-        self.assertEqual(key, "from-file")
+        assert key == "from-file"
 
     def test_falls_back_to_env_when_file_missing(self):
         with tempfile.TemporaryDirectory() as root, mock.patch.dict(
@@ -206,7 +206,7 @@ class BuildClientApiKeyTests(unittest.TestCase):
                 "api_key_env": "UM_KEY",
                 "api_key_file": os.path.join(root, "absent"),
             })
-        self.assertEqual(key, "from-env")
+        assert key == "from-env"
 
 
 class FetchLiteLLMRegistryTests(unittest.TestCase):
@@ -217,7 +217,7 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
         fake_response.raise_for_status.return_value = None
         with mock.patch("update_models.requests.get", return_value=fake_response):
             result = update_models.fetch_litellm_registry()
-        self.assertEqual(result, sample)
+        assert result == sample
 
     def test_returns_empty_dict_on_network_error(self):
         with mock.patch(
@@ -225,7 +225,7 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
             side_effect=update_models.requests.ConnectionError("boom"),
         ):
             result = update_models.fetch_litellm_registry()
-        self.assertEqual(result, {})
+        assert result == {}
 
     def test_returns_empty_dict_on_bad_json(self):
         fake_response = mock.Mock(status_code=200)
@@ -233,7 +233,7 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
         fake_response.json.side_effect = ValueError("not json")
         with mock.patch("update_models.requests.get", return_value=fake_response):
             result = update_models.fetch_litellm_registry()
-        self.assertEqual(result, {})
+        assert result == {}
 
     def test_returns_empty_dict_on_non_dict_response(self):
         fake_response = mock.Mock(status_code=200)
@@ -241,7 +241,7 @@ class FetchLiteLLMRegistryTests(unittest.TestCase):
         fake_response.raise_for_status.return_value = None
         with mock.patch("update_models.requests.get", return_value=fake_response):
             result = update_models.fetch_litellm_registry()
-        self.assertEqual(result, {})
+        assert result == {}
 
 
 class LookupPdfSupportTests(unittest.TestCase):
@@ -262,11 +262,7 @@ class LookupPdfSupportTests(unittest.TestCase):
     }
 
     def test_finds_by_bare_id(self):
-        self.assertTrue(
-            update_models.lookup_pdf_support(
-                self.REGISTRY, "claude-sonnet-4-20250514", "anthropic"
-            )
-        )
+        assert update_models.lookup_pdf_support(self.REGISTRY, "claude-sonnet-4-20250514", "anthropic")
 
     def test_finds_by_namespaced_id(self):
         # bare lookup misses; provider-prefixed form should hit
@@ -274,24 +270,17 @@ class LookupPdfSupportTests(unittest.TestCase):
             self.REGISTRY, "grok-4-0709", "xai"
         )
         # supports_pdf_input is None in registry → return None (unknown)
-        self.assertIsNone(result)
+        assert result is None
 
     def test_unknown_model_returns_none(self):
-        self.assertIsNone(
-            update_models.lookup_pdf_support(self.REGISTRY, "nonexistent", "openai")
-        )
+        assert update_models.lookup_pdf_support(self.REGISTRY, "nonexistent", "openai") is None
 
     def test_entry_without_pdf_flag_returns_none(self):
-        self.assertIsNone(
-            update_models.lookup_pdf_support(self.REGISTRY, "no-pdf-flag", "anthropic")
-        )
+        assert update_models.lookup_pdf_support(self.REGISTRY, "no-pdf-flag", "anthropic") is None
 
     def test_false_flag_returns_false(self):
         registry = {"some-model": {"supports_pdf_input": False}}
-        self.assertEqual(
-            update_models.lookup_pdf_support(registry, "some-model", "openai"),
-            False,
-        )
+        assert update_models.lookup_pdf_support(registry, "some-model", "openai") == False
 
 
 class LookupVisionSupportTests(unittest.TestCase):
@@ -312,11 +301,7 @@ class LookupVisionSupportTests(unittest.TestCase):
     }
 
     def test_finds_by_bare_id(self):
-        self.assertTrue(
-            update_models.lookup_vision_support(
-                self.REGISTRY, "claude-sonnet-4-20250514", "anthropic"
-            )
-        )
+        assert update_models.lookup_vision_support(self.REGISTRY, "claude-sonnet-4-20250514", "anthropic")
 
     def test_finds_by_namespaced_id(self):
         # bare lookup misses; provider-prefixed form should hit
@@ -324,26 +309,17 @@ class LookupVisionSupportTests(unittest.TestCase):
             self.REGISTRY, "grok-4-0709", "xai"
         )
         # supports_vision is None in registry → return None (unknown)
-        self.assertIsNone(result)
+        assert result is None
 
     def test_unknown_model_returns_none(self):
-        self.assertIsNone(
-            update_models.lookup_vision_support(self.REGISTRY, "nonexistent", "openai")
-        )
+        assert update_models.lookup_vision_support(self.REGISTRY, "nonexistent", "openai") is None
 
     def test_entry_without_vision_flag_returns_none(self):
-        self.assertIsNone(
-            update_models.lookup_vision_support(
-                self.REGISTRY, "no-vision-flag", "anthropic"
-            )
-        )
+        assert update_models.lookup_vision_support(self.REGISTRY, "no-vision-flag", "anthropic") is None
 
     def test_false_flag_returns_false(self):
         registry = {"some-model": {"supports_vision": False}}
-        self.assertEqual(
-            update_models.lookup_vision_support(registry, "some-model", "openai"),
-            False,
-        )
+        assert update_models.lookup_vision_support(registry, "some-model", "openai") == False
 
 
 class FilterChatModelsTests(unittest.TestCase):
@@ -359,23 +335,20 @@ class FilterChatModelsTests(unittest.TestCase):
             "omni-moderation-latest",
         ]
         kept = update_models.filter_chat_models("openai", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted(["o3-mini"]),
-        )
+        assert sorted(kept) == sorted(["o3-mini"])
 
     def test_anthropic_keeps_only_claude(self):
         ids = ["claude-sonnet-4-20250514", "non-claude-model"]
         kept = update_models.filter_chat_models("anthropic", ids)
-        self.assertEqual(kept, ["claude-sonnet-4-20250514"])
+        assert kept == ["claude-sonnet-4-20250514"]
 
     def test_google_keeps_only_gemini(self):
         ids = ["gemini-2.5-pro", "models/gemini-2.5-flash", "embedding-001"]
         kept = update_models.filter_chat_models("google", ids)
         # accepts the bare and the "models/" prefixed form
-        self.assertIn("gemini-2.5-pro", kept)
-        self.assertIn("models/gemini-2.5-flash", kept)
-        self.assertNotIn("embedding-001", kept)
+        assert "gemini-2.5-pro" in kept
+        assert "models/gemini-2.5-flash" in kept
+        assert "embedding-001" not in kept
 
     def test_xai_keeps_only_grok(self):
         ids = [
@@ -388,7 +361,7 @@ class FilterChatModelsTests(unittest.TestCase):
         ]
         kept = update_models.filter_chat_models("xai", ids)
         # grok-3 is deprecated; grok-imagine-* filtered by global name filter
-        self.assertEqual(sorted(kept), ["grok-4-0709"])
+        assert sorted(kept) == ["grok-4-0709"]
 
     def test_lmstudio_drops_known_non_chat_name_patterns(self):
         ids = [
@@ -408,14 +381,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "sdxl-image-fix",                   # drop (image)
         ]
         kept = update_models.filter_chat_models("lmstudio", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted([
-                "google/gemma-4-31b",
-                "anything-loaded-locally",
-                "totally-custom",
-            ]),
-        )
+        assert sorted(kept) == sorted(["google/gemma-4-31b", "anything-loaded-locally", "totally-custom"])
 
     def test_global_name_filter_applies_to_all_providers(self):
         # Each provider should drop names containing the global substrings,
@@ -440,15 +406,12 @@ class FilterChatModelsTests(unittest.TestCase):
         ]
         for provider, inputs, expected in cases:
             with self.subTest(provider=provider):
-                self.assertEqual(
-                    sorted(update_models.filter_chat_models(provider, inputs)),
-                    sorted(expected),
-                )
+                assert sorted(update_models.filter_chat_models(provider, inputs)) == sorted(expected)
 
     def test_unknown_provider_keeps_everything(self):
         ids = ["a", "b"]
         kept = update_models.filter_chat_models("never-heard-of-it", ids)
-        self.assertEqual(sorted(kept), sorted(ids))
+        assert sorted(kept) == sorted(ids)
 
     def test_openai_excludes_o_prefix_without_digit(self):
         # The "o" matcher must require a digit follow (o3, o4, etc.) — bare "o"
@@ -457,15 +420,15 @@ class FilterChatModelsTests(unittest.TestCase):
         kept = update_models.filter_chat_models("openai", ids)
         # o3 keeps (digit after o, not deprecated); gpt-4o keeps (gpt- prefix).
         # o1-mini drops (o1 deprecated); octopus-3 and omni-foo must be dropped.
-        self.assertNotIn("o1-mini", kept)
-        self.assertIn("o3", kept)
-        self.assertIn("gpt-4o", kept)
-        self.assertNotIn("octopus-3", kept)
-        self.assertNotIn("omni-foo", kept)
+        assert "o1-mini" not in kept
+        assert "o3" in kept
+        assert "gpt-4o" in kept
+        assert "octopus-3" not in kept
+        assert "omni-foo" not in kept
 
     def test_filter_handles_empty_list(self):
         for provider in ("openai", "anthropic", "google", "xai", "lmstudio"):
-            self.assertEqual(update_models.filter_chat_models(provider, []), [])
+            assert update_models.filter_chat_models(provider, []) == []
 
     def test_openai_excludes_audio_realtime_transcribe_tts_image(self):
         # gpt-prefixed but not text chat
@@ -480,14 +443,14 @@ class FilterChatModelsTests(unittest.TestCase):
             "gpt-4o-mini-search-preview",    # drop (global filter catches search)
         ]
         kept = update_models.filter_chat_models("openai", ids)
-        self.assertIn("gpt-4o", kept)
-        self.assertNotIn("gpt-4o-audio-preview", kept)
-        self.assertNotIn("gpt-4o-mini-audio-preview", kept)
-        self.assertNotIn("gpt-4o-mini-realtime-preview", kept)
-        self.assertNotIn("gpt-4o-mini-transcribe", kept)
-        self.assertNotIn("gpt-4o-mini-tts", kept)
-        self.assertNotIn("gpt-image-1", kept)
-        self.assertNotIn("gpt-4o-mini-search-preview", kept)
+        assert "gpt-4o" in kept
+        assert "gpt-4o-audio-preview" not in kept
+        assert "gpt-4o-mini-audio-preview" not in kept
+        assert "gpt-4o-mini-realtime-preview" not in kept
+        assert "gpt-4o-mini-transcribe" not in kept
+        assert "gpt-4o-mini-tts" not in kept
+        assert "gpt-image-1" not in kept
+        assert "gpt-4o-mini-search-preview" not in kept
 
     def test_global_filter_drops_flash_live_multi_agent_search(self):
         cases = [
@@ -504,10 +467,7 @@ class FilterChatModelsTests(unittest.TestCase):
         ]
         for provider, inputs, expected in cases:
             with self.subTest(provider=provider):
-                self.assertEqual(
-                    sorted(update_models.filter_chat_models(provider, inputs)),
-                    sorted(expected),
-                )
+                assert sorted(update_models.filter_chat_models(provider, inputs)) == sorted(expected)
 
     def test_global_filter_drops_computer_use_and_customtools(self):
         ids = [
@@ -516,7 +476,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "gemini-3.1-pro-preview-customtools",
         ]
         kept = update_models.filter_chat_models("google", ids)
-        self.assertEqual(kept, ["gemini-2.5-pro"])
+        assert kept == ["gemini-2.5-pro"]
 
     def test_openai_drops_dated_snapshots_and_legacy(self):
         ids = [
@@ -539,17 +499,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "gpt-4-turbo-2024-04-09",            # drop (dated)
         ]
         kept = update_models.filter_chat_models("openai", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted([
-                "gpt-4o",
-                "gpt-4.1",
-                "gpt-5",
-                "gpt-5-chat-latest",
-                "o3",
-                "gpt-4-turbo",
-            ]),
-        )
+        assert sorted(kept) == sorted(["gpt-4o", "gpt-4.1", "gpt-5", "gpt-5-chat-latest", "o3", "gpt-4-turbo"])
 
     def test_google_drops_deprecated_2_0_models(self):
         ids = [
@@ -561,10 +511,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "models/gemini-2.5-flash",
         ]
         kept = update_models.filter_chat_models("google", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted(["gemini-2.5-pro", "models/gemini-2.5-flash"]),
-        )
+        assert sorted(kept) == sorted(["gemini-2.5-pro", "models/gemini-2.5-flash"])
 
     def test_openai_drops_o1_deprecated(self):
         ids = [
@@ -576,10 +523,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "o4-mini",
         ]
         kept = update_models.filter_chat_models("openai", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted(["gpt-4o", "o3", "o3-mini", "o4-mini"]),
-        )
+        assert sorted(kept) == sorted(["gpt-4o", "o3", "o3-mini", "o4-mini"])
 
     def test_xai_drops_grok_3_deprecated(self):
         ids = [
@@ -589,10 +533,7 @@ class FilterChatModelsTests(unittest.TestCase):
             "grok-4-fast-non-reasoning",
         ]
         kept = update_models.filter_chat_models("xai", ids)
-        self.assertEqual(
-            sorted(kept),
-            sorted(["grok-4-0709", "grok-4-fast-non-reasoning"]),
-        )
+        assert sorted(kept) == sorted(["grok-4-0709", "grok-4-fast-non-reasoning"])
 
 
 class AtomicWriteJsonTests(unittest.TestCase):
@@ -602,8 +543,8 @@ class AtomicWriteJsonTests(unittest.TestCase):
             update_models.atomic_write_json(path, {"a": 1, "b": [2, 3]})
             with open(path) as f:
                 content = f.read()
-        self.assertIn('"a": 1', content)
-        self.assertTrue(content.endswith("\n"))
+        assert '"a": 1' in content
+        assert content.endswith("\n")
 
     def test_no_partial_file_on_serialization_error(self):
         class Unserializable:
@@ -617,9 +558,9 @@ class AtomicWriteJsonTests(unittest.TestCase):
             with self.assertRaises(TypeError):
                 update_models.atomic_write_json(path, {"bad": Unserializable()})
             with open(path) as f:
-                self.assertEqual(f.read(), '{"original": true}\n')
+                assert f.read() == '{"original": true}\n'
             # The .tmp staging file should not be left behind
-            self.assertFalse(os.path.exists(path + ".tmp"))
+            assert not os.path.exists(path + ".tmp")
 
     def test_overwrites_existing_file(self):
         with tempfile.TemporaryDirectory() as root:
@@ -629,16 +570,14 @@ class AtomicWriteJsonTests(unittest.TestCase):
             update_models.atomic_write_json(path, {"new": True})
             with open(path) as f:
                 content = f.read()
-        self.assertIn('"new": true', content)
-        self.assertNotIn("old", content)
+        assert '"new": true' in content
+        assert "old" not in content
 
 
 class OutputFormattingTests(unittest.TestCase):
     def test_header(self):
         line = update_models.format_header("anthropic", "https://api.anthropic.com")
-        self.assertEqual(
-            line, "Probing provider anthropic at endpoint https://api.anthropic.com"
-        )
+        assert line == "Probing provider anthropic at endpoint https://api.anthropic.com"
 
     def test_model_line_success_true(self):
         line = update_models.format_model_line(
@@ -647,11 +586,7 @@ class OutputFormattingTests(unittest.TestCase):
             supports_vision=True,
             pdf_strategy="inline_base64_document",
         )
-        self.assertEqual(
-            line,
-            "\t✓  Model: claude-sonnet-4  "
-            "[ pdf: True | vision: True | strategy: inline_base64_document ]",
-        )
+        assert line == "\t✓  Model: claude-sonnet-4  " "[ pdf: True | vision: True | strategy: inline_base64_document ]"
 
     def test_model_line_success_false(self):
         line = update_models.format_model_line(
@@ -660,11 +595,7 @@ class OutputFormattingTests(unittest.TestCase):
             supports_vision=False,
             pdf_strategy="none",
         )
-        self.assertEqual(
-            line,
-            "\t✓  Model: claude-haiku-3-5  "
-            "[ pdf: False | vision: False | strategy: none ]",
-        )
+        assert line == "\t✓  Model: claude-haiku-3-5  " "[ pdf: False | vision: False | strategy: none ]"
 
     def test_model_line_mixed_capabilities(self):
         line = update_models.format_model_line(
@@ -673,111 +604,75 @@ class OutputFormattingTests(unittest.TestCase):
             supports_vision=True,
             pdf_strategy="rasterize_to_images",
         )
-        self.assertEqual(
-            line,
-            "\t✓  Model: some-model  "
-            "[ pdf: False | vision: True | strategy: rasterize_to_images ]",
-        )
+        assert line == "\t✓  Model: some-model  " "[ pdf: False | vision: True | strategy: rasterize_to_images ]"
 
     def test_model_line_error(self):
         line = update_models.format_model_line(
             "claude-experimental", error="HTTP 404 model not found"
         )
-        self.assertEqual(
-            line,
-            "\t✗  Model: claude-experimental  [ Error: HTTP 404 model not found ]",
-        )
+        assert line == "\t✗  Model: claude-experimental  [ Error: HTTP 404 model not found ]"
 
     def test_provider_summary_success(self):
         line = update_models.format_provider_summary("anthropic", success=True)
-        self.assertEqual(line, "✅ anthropic  Model list updated")
+        assert line == "✅ anthropic  Model list updated"
 
     def test_provider_summary_failure(self):
         line = update_models.format_provider_summary(
             "xai", success=False, error="HTTP 401 unauthorized"
         )
-        self.assertEqual(
-            line, "❌ xai  Error retrieving list of models: HTTP 401 unauthorized"
-        )
+        assert line == "❌ xai  Error retrieving list of models: HTTP 401 unauthorized"
 
 
 class DerivePdfStrategyTests(unittest.TestCase):
     def test_anthropic_pdf_uses_inline_base64(self):
-        self.assertEqual(
-            update_models.derive_pdf_strategy("anthropic", True, True),
-            "inline_base64_document",
-        )
+        assert update_models.derive_pdf_strategy("anthropic", True, True) == "inline_base64_document"
         # Anthropic chooses its native PDF transport even without vision flag.
-        self.assertEqual(
-            update_models.derive_pdf_strategy("anthropic", True, False),
-            "inline_base64_document",
-        )
+        assert update_models.derive_pdf_strategy("anthropic", True, False) == "inline_base64_document"
 
     def test_openai_and_xai_pdf_use_files_api(self):
         for provider in ("openai", "xai"):
-            self.assertEqual(
-                update_models.derive_pdf_strategy(provider, True, True),
-                "files_api_responses",
-            )
+            assert update_models.derive_pdf_strategy(provider, True, True) == "files_api_responses"
 
     def test_google_pdf_uses_genai_files_upload(self):
-        self.assertEqual(
-            update_models.derive_pdf_strategy("google", True, True),
-            "genai_files_upload",
-        )
+        assert update_models.derive_pdf_strategy("google", True, True) == "genai_files_upload"
 
     def test_lmstudio_always_rasterizes_when_vision(self):
         # LM Studio ignores the pdf flag because local servers are permissive.
-        self.assertEqual(
-            update_models.derive_pdf_strategy("lmstudio", True, True),
-            "rasterize_to_images",
-        )
-        self.assertEqual(
-            update_models.derive_pdf_strategy("lmstudio", False, True),
-            "rasterize_to_images",
-        )
-        self.assertEqual(
-            update_models.derive_pdf_strategy("lmstudio", True, False),
-            "none",
-        )
+        assert update_models.derive_pdf_strategy("lmstudio", True, True) == "rasterize_to_images"
+        assert update_models.derive_pdf_strategy("lmstudio", False, True) == "rasterize_to_images"
+        assert update_models.derive_pdf_strategy("lmstudio", True, False) == "none"
 
     def test_no_pdf_with_vision_falls_back_to_rasterize(self):
         for provider in ("openai", "anthropic", "google", "xai"):
-            self.assertEqual(
-                update_models.derive_pdf_strategy(provider, False, True),
-                "rasterize_to_images",
-            )
+            assert update_models.derive_pdf_strategy(provider, False, True) == "rasterize_to_images"
 
     def test_no_pdf_no_vision_yields_none(self):
         for provider in ("openai", "anthropic", "google", "xai", "lmstudio"):
-            self.assertEqual(
-                update_models.derive_pdf_strategy(provider, False, False),
-                "none",
-            )
+            assert update_models.derive_pdf_strategy(provider, False, False) == "none"
 
 
 class MinimalPdfTests(unittest.TestCase):
     def test_base64_decodes(self):
         raw = base64.b64decode(update_models.MINIMAL_PDF_B64)
         # Must start with the PDF magic header and end with %%EOF
-        self.assertTrue(raw.startswith(b"%PDF-"))
-        self.assertIn(b"%%EOF", raw)
+        assert raw.startswith(b"%PDF-")
+        assert b"%%EOF" in raw
 
     def test_size_is_reasonable(self):
         raw = base64.b64decode(update_models.MINIMAL_PDF_B64)
         # Few hundred bytes per the spec; not many KB
-        self.assertLess(len(raw), 2048)
+        assert len(raw) < 2048
 
 
 class MinimalPngTests(unittest.TestCase):
     def test_base64_decodes(self):
         raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
         # PNG magic header is 8 bytes: \x89PNG\r\n\x1a\n
-        self.assertTrue(raw.startswith(b"\x89PNG"))
+        assert raw.startswith(b"\x89PNG")
 
     def test_size_is_reasonable(self):
         raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
-        self.assertLess(len(raw), 256)
+        assert len(raw) < 256
 
     def test_dimensions_meet_xai_minimum(self):
         # xAI rejects images below 8x8 dimensions or below 512 total pixels.
@@ -786,40 +681,32 @@ class MinimalPngTests(unittest.TestCase):
         import struct
         raw = base64.b64decode(update_models.MINIMAL_PNG_B64)
         width, height = struct.unpack(">II", raw[16:24])
-        self.assertGreaterEqual(width, 8)
-        self.assertGreaterEqual(height, 8)
-        self.assertGreaterEqual(width * height, 512)
+        assert width >= 8
+        assert height >= 8
+        assert width * height >= 512
 
 
 class ProbeResultTests(unittest.TestCase):
     def test_success_with_pdf(self):
         r = update_models.ProbeResult(succeeded=True, supports=True, error=None)
-        self.assertTrue(r.succeeded)
-        self.assertTrue(r.supports)
-        self.assertIsNone(r.error)
+        assert r.succeeded
+        assert r.supports
+        assert r.error is None
 
     def test_failure_carries_error(self):
         r = update_models.ProbeResult(
             succeeded=False, supports=None, error="boom"
         )
-        self.assertFalse(r.succeeded)
-        self.assertEqual(r.error, "boom")
+        assert not r.succeeded
+        assert r.error == "boom"
 
 
 class EndpointRootTests(unittest.TestCase):
     def test_replaces_chat_completions(self):
-        self.assertEqual(
-            update_models.derive_models_url(
-                "http://localhost:1234/v1/chat/completions"
-            ),
-            "http://localhost:1234/v1/models",
-        )
+        assert update_models.derive_models_url("http://localhost:1234/v1/chat/completions") == "http://localhost:1234/v1/models"
 
     def test_appends_models_when_no_chat_completions(self):
-        self.assertEqual(
-            update_models.derive_models_url("https://api.example.com/v1"),
-            "https://api.example.com/v1/models",
-        )
+        assert update_models.derive_models_url("https://api.example.com/v1") == "https://api.example.com/v1/models"
 
 
 class OpenAICompatProviderTests(unittest.TestCase):
@@ -839,10 +726,10 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.get", return_value=fake_response
         ) as g:
             result = client.list_models()
-        self.assertEqual(sorted(result), ["custom-model", "google/gemma-4-31b"])
+        assert sorted(result) == ["custom-model", "google/gemma-4-31b"]
         g.assert_called_once()
         called_url = g.call_args[0][0]
-        self.assertEqual(called_url, "http://localhost:1234/v1/models")
+        assert called_url == "http://localhost:1234/v1/models"
 
     def test_list_models_raises_on_http_error(self):
         client = self._make_client()
@@ -852,9 +739,8 @@ class OpenAICompatProviderTests(unittest.TestCase):
         )
         with mock.patch(
             "update_models.requests.get", return_value=fake_response
-        ):
-            with self.assertRaises(update_models.requests.HTTPError):
-                client.list_models()
+        ), self.assertRaises(update_models.requests.HTTPError):
+            client.list_models()
 
     def test_probe_pdf_returns_true_on_2xx(self):
         client = self._make_client()
@@ -865,9 +751,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.post", return_value=fake_response
         ):
             result = client.probe("google/gemma-4-31b", "pdf")
-        self.assertTrue(result.succeeded)
-        self.assertTrue(result.supports)
-        self.assertIsNone(result.error)
+        assert result.succeeded
+        assert result.supports
+        assert result.error is None
 
     def test_probe_image_returns_true_on_2xx(self):
         client = self._make_client()
@@ -878,9 +764,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.post", return_value=fake_response
         ):
             result = client.probe("google/gemma-4-31b", "image")
-        self.assertTrue(result.succeeded)
-        self.assertTrue(result.supports)
-        self.assertIsNone(result.error)
+        assert result.succeeded
+        assert result.supports
+        assert result.error is None
 
     def test_probe_image_returns_false_on_input_rejection(self):
         # "does not support image inputs" is an image-rejection marker, not a PDF one.
@@ -897,9 +783,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.post", return_value=fake_response
         ):
             result = client.probe("text-only-model", "image")
-        self.assertTrue(result.succeeded)
-        self.assertFalse(result.supports)
-        self.assertIsNone(result.error)
+        assert result.succeeded
+        assert not result.supports
+        assert result.error is None
 
     def test_probe_pdf_returns_false_on_pdf_rejection(self):
         # Use a PDF-specific rejection body with kind="pdf".
@@ -915,9 +801,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.post", return_value=fake_response
         ):
             result = client.probe("text-only-model", "pdf")
-        self.assertTrue(result.succeeded)
-        self.assertFalse(result.supports)
-        self.assertIsNone(result.error)
+        assert result.succeeded
+        assert not result.supports
+        assert result.error is None
 
     def test_probe_pdf_returns_error_on_other_failure(self):
         client = self._make_client()
@@ -930,9 +816,9 @@ class OpenAICompatProviderTests(unittest.TestCase):
             "update_models.requests.post", return_value=fake_response
         ):
             result = client.probe("any-model", "pdf")
-        self.assertFalse(result.succeeded)
-        self.assertIsNone(result.supports)
-        self.assertIn("503", result.error)
+        assert not result.succeeded
+        assert result.supports is None
+        assert "503" in result.error
 
     def test_probe_raises_on_unknown_kind(self):
         client = self._make_client()
@@ -949,7 +835,7 @@ class XAIProviderTests(unittest.TestCase):
 
     def test_models_url_correct(self):
         client = self._make_client()
-        self.assertEqual(client.models_url, "https://api.x.ai/v1/models")
+        assert client.models_url == "https://api.x.ai/v1/models"
 
     def test_list_models_passes_bearer_token(self):
         client = self._make_client(api_key="xai-secret")
@@ -961,14 +847,12 @@ class XAIProviderTests(unittest.TestCase):
             "update_models.requests.get", return_value=fake_response
         ) as g:
             result = client.list_models()
-        self.assertEqual(sorted(result), ["grok-3", "grok-4-0709"])
+        assert sorted(result) == ["grok-3", "grok-4-0709"]
         called_kwargs = g.call_args.kwargs
-        self.assertEqual(
-            called_kwargs["headers"]["Authorization"], "Bearer xai-secret"
-        )
+        assert called_kwargs["headers"]["Authorization"] == "Bearer xai-secret"
 
     def test_name_is_xai(self):
-        self.assertEqual(self._make_client().name, "xai")
+        assert self._make_client().name == "xai"
 
 
 class GoogleProviderListModelsTests(unittest.TestCase):
@@ -993,18 +877,13 @@ class GoogleProviderListModelsTests(unittest.TestCase):
             "update_models.requests.get", return_value=fake_response
         ) as g:
             result = client.list_models()
-        self.assertEqual(result, ["gemini-2.5-pro", "gemini-2.5-flash"])
+        assert result == ["gemini-2.5-pro", "gemini-2.5-flash"]
         g.assert_called_once()
         called_url = g.call_args[0][0]
-        self.assertEqual(
-            called_url,
-            "https://generativelanguage.googleapis.com/v1beta/models",
-        )
+        assert called_url == "https://generativelanguage.googleapis.com/v1beta/models"
         # Key travels in the header, not the URL.
-        self.assertEqual(
-            g.call_args.kwargs["headers"]["x-goog-api-key"], "gkey"
-        )
-        self.assertEqual(g.call_args.kwargs["params"]["pageSize"], 1000)
+        assert g.call_args.kwargs["headers"]["x-goog-api-key"] == "gkey"
+        assert g.call_args.kwargs["params"]["pageSize"] == 1000
 
     def test_list_models_follows_pagination(self):
         client = self._make_client()
@@ -1021,9 +900,9 @@ class GoogleProviderListModelsTests(unittest.TestCase):
             "update_models.requests.get", side_effect=[page1, page2]
         ) as g:
             result = client.list_models()
-        self.assertEqual(result, ["gemini-a", "gemini-b"])
-        self.assertEqual(g.call_count, 2)
-        self.assertEqual(g.call_args_list[1].kwargs["params"]["pageToken"], "tok")
+        assert result == ["gemini-a", "gemini-b"]
+        assert g.call_count == 2
+        assert g.call_args_list[1].kwargs["params"]["pageToken"] == "tok"
 
     def test_list_models_raises_on_http_error(self):
         client = self._make_client()
@@ -1033,9 +912,8 @@ class GoogleProviderListModelsTests(unittest.TestCase):
         )
         with mock.patch(
             "update_models.requests.get", return_value=fake_response
-        ):
-            with self.assertRaises(update_models.requests.HTTPError):
-                client.list_models()
+        ), self.assertRaises(update_models.requests.HTTPError):
+            client.list_models()
 
 
 class FakeProvider:
@@ -1090,20 +968,11 @@ class ProcessProviderTests(unittest.TestCase):
                 registry=registry,
                 enable_probing=False,
             )
-        self.assertTrue(summary.success)
-        self.assertEqual(
-            sorted(updated["available_models"]),
-            ["claude-known", "claude-unknown"],
-        )
-        self.assertEqual(
-            updated["pdf_strategy"],
-            {
-                "claude-known": "inline_base64_document",
-                "claude-unknown": "none",
-            },
-        )
-        self.assertNotIn("pdf_support", updated)
-        self.assertNotIn("vision_support", updated)
+        assert summary.success
+        assert sorted(updated["available_models"]) == ["claude-known", "claude-unknown"]
+        assert updated["pdf_strategy"] == {"claude-known": "inline_base64_document", "claude-unknown": "none"}
+        assert "pdf_support" not in updated
+        assert "vision_support" not in updated
 
     def test_probes_unknown_when_enabled(self):
         provider = FakeProvider(
@@ -1134,12 +1003,10 @@ class ProcessProviderTests(unittest.TestCase):
                 registry={},
                 enable_probing=True,
             )
-        self.assertTrue(summary.success)
-        self.assertEqual(
-            updated["pdf_strategy"], {"claude-mystery": "inline_base64_document"}
-        )
-        self.assertNotIn("pdf_support", updated)
-        self.assertNotIn("vision_support", updated)
+        assert summary.success
+        assert updated["pdf_strategy"] == {"claude-mystery": "inline_base64_document"}
+        assert "pdf_support" not in updated
+        assert "vision_support" not in updated
 
     def test_provider_failure_returns_unchanged_block_and_failure_summary(self):
         provider = FakeProvider(
@@ -1160,9 +1027,9 @@ class ProcessProviderTests(unittest.TestCase):
             registry={},
             enable_probing=False,
         )
-        self.assertFalse(summary.success)
-        self.assertEqual(updated, original_block)
-        self.assertIn("401", summary.error)
+        assert not summary.success
+        assert updated == original_block
+        assert "401" in summary.error
 
     def test_default_model_preserved_when_still_present(self):
         provider = FakeProvider(models=["a", "b", "c"])
@@ -1184,7 +1051,7 @@ class ProcessProviderTests(unittest.TestCase):
                 registry={},
                 enable_probing=False,
             )
-        self.assertEqual(updated["default_model"], "b")
+        assert updated["default_model"] == "b"
 
     def test_default_model_reset_when_dropped(self):
         provider = FakeProvider(models=["x", "y"])
@@ -1207,7 +1074,7 @@ class ProcessProviderTests(unittest.TestCase):
                 enable_probing=False,
             )
         # First model in sorted available_models becomes the new default
-        self.assertEqual(updated["default_model"], "x")
+        assert updated["default_model"] == "x"
 
     def test_both_registry_fields_flow_through(self):
         """Registry entries with both pdf and vision flags carry through correctly."""
@@ -1233,16 +1100,13 @@ class ProcessProviderTests(unittest.TestCase):
                 registry=registry,
                 enable_probing=False,
             )
-        self.assertTrue(summary.success)
+        assert summary.success
         # Unknown provider falls through derive_pdf_strategy: pdf=True path
         # returns "rasterize_to_images" when vision is also true; no vision/pdf
         # → "none".
-        self.assertEqual(
-            updated["pdf_strategy"],
-            {"model-a": "rasterize_to_images", "model-b": "none"},
-        )
-        self.assertNotIn("pdf_support", updated)
-        self.assertNotIn("vision_support", updated)
+        assert updated["pdf_strategy"] == {"model-a": "rasterize_to_images", "model-b": "none"}
+        assert "pdf_support" not in updated
+        assert "vision_support" not in updated
 
 
 class LMStudioProviderTests(unittest.TestCase):
@@ -1269,12 +1133,9 @@ class LMStudioProviderTests(unittest.TestCase):
             "update_models.requests.get", return_value=fake_response
         ) as g:
             result = client.list_models()
-        self.assertEqual(
-            sorted(result),
-            sorted(["google/gemma-4-31b", "qwen-coder", "jina-reranker-v3-mlx"]),
-        )
+        assert sorted(result) == sorted(["google/gemma-4-31b", "qwen-coder", "jina-reranker-v3-mlx"])
         called_url = g.call_args[0][0]
-        self.assertEqual(called_url, "http://localhost:1234/api/v0/models")
+        assert called_url == "http://localhost:1234/api/v0/models"
 
     def test_list_models_falls_back_to_openai_compat_on_error(self):
         client = self._make_client()
@@ -1300,64 +1161,34 @@ class LMStudioProviderTests(unittest.TestCase):
             "update_models.requests.get", side_effect=side_effect
         ):
             result = client.list_models()
-        self.assertEqual(result, ["fallback-model"])
-        self.assertEqual(call_count["n"], 2)
+        assert result == ["fallback-model"]
+        assert call_count["n"] == 2
 
 
 class CapabilityRejectionTests(unittest.TestCase):
     def test_pdf_rejection_lmstudio_image_only(self):
-        self.assertTrue(
-            update_models._is_capability_rejection(
-                '{"error":"\'url\' field must be a base64 encoded image."}',
-                "pdf",
-            )
-        )
+        assert update_models._is_capability_rejection('{"error":"\'url\' field must be a base64 encoded image."}', "pdf")
 
     def test_pdf_rejection_openai_unsupported_mime(self):
-        self.assertTrue(
-            update_models._is_capability_rejection(
-                "Invalid image URL: ... unsupported MIME type 'application/pdf'.",
-                "pdf",
-            )
-        )
+        assert update_models._is_capability_rejection("Invalid image URL: ... unsupported MIME type 'application/pdf'.", "pdf")
 
     def test_pdf_rejection_xai_invalid_base64_image(self):
-        self.assertTrue(
-            update_models._is_capability_rejection(
-                '{"error":"Invalid request content: Invalid base64-encoded image."}',
-                "pdf",
-            )
-        )
+        assert update_models._is_capability_rejection('{"error":"Invalid request content: Invalid base64-encoded image."}', "pdf")
 
     def test_image_rejection_xai_plural(self):
         # Plural form: "Image inputs are not supported by this model."
-        self.assertTrue(
-            update_models._is_capability_rejection(
-                '{"error":"Image inputs are not supported by this model."}',
-                "image",
-            )
-        )
+        assert update_models._is_capability_rejection('{"error":"Image inputs are not supported by this model."}', "image")
 
     def test_image_rejection_also_applies_to_pdf_kind(self):
         # When probing PDF via image_url, a vision-incapable model returns
         # "image inputs are not supported" — that equally means "no PDF support",
         # so this phrase is intentionally in both marker lists.
-        self.assertTrue(
-            update_models._is_capability_rejection(
-                "Image inputs are not supported by this model.",
-                "pdf",
-            )
-        )
+        assert update_models._is_capability_rejection("Image inputs are not supported by this model.", "pdf")
 
     def test_invalid_b64_image_with_kind_image_is_NOT_a_rejection(self):
         # When probing image, "Invalid base64-encoded image" is a real error
         # (our PNG was bad), not a "doesn't support image" signal.
-        self.assertFalse(
-            update_models._is_capability_rejection(
-                '{"error":"Invalid base64-encoded image."}',
-                "image",
-            )
-        )
+        assert not update_models._is_capability_rejection('{"error":"Invalid base64-encoded image."}', "image")
 
 
 if __name__ == "__main__":

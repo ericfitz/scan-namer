@@ -27,7 +27,7 @@ import re
 import socket
 import sys
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -64,6 +64,8 @@ LITELLM_REGISTRY_URL = (
 )
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+logger = logging.getLogger(__name__)
 CONFIG_PATH = os.path.join(PROJECT_ROOT, "config.json")
 
 # Minimal valid 1-page PDF (612x792 / US Letter, no content stream).
@@ -92,8 +94,8 @@ class ProbeResult:
     """Outcome of a single capability probe (pdf or image)."""
 
     succeeded: bool
-    supports: Optional[bool]
-    error: Optional[str]
+    supports: bool | None
+    error: str | None
 
 
 _EXPORT_LINE_RE = re.compile(
@@ -101,7 +103,7 @@ _EXPORT_LINE_RE = re.compile(
 )
 
 
-def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional[str]:
+def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> str | None:
     """Resolve an API key by trying a same-named file in project_root, then the
     environment variable, then returning None.
 
@@ -112,7 +114,7 @@ def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional
     file_path = os.path.join(project_root, env_name)
     if os.path.isfile(file_path):
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 for line in f:
                     m = _EXPORT_LINE_RE.match(line)
                     if not m or m.group("name") != env_name:
@@ -126,12 +128,12 @@ def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional
                         value = value[1:-1]
                     return value
         except OSError as e:
-            logging.warning("Could not read %s: %s", file_path, e)
+            logger.warning("Could not read %s: %s", file_path, e)
 
     return os.environ.get(env_name)
 
 
-def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
+def read_api_key_file(raw_path: Any, env_name: str) -> str | None:
     """Read an API key from a provider's configured `api_key_file`.
 
     `~` and `$VAR` references in the path are expanded and the result must be
@@ -151,10 +153,10 @@ def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
     if not os.path.isabs(path):
         raise ValueError(f"api_key_file {raw_path!r} must be an absolute path")
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             lines = f.readlines()
     except OSError as e:
-        logging.warning("Could not read api_key_file %s: %s", path, e)
+        logger.warning("Could not read api_key_file %s: %s", path, e)
         return None
 
     matches = [m for m in (_EXPORT_LINE_RE.match(line) for line in lines) if m]
@@ -167,7 +169,7 @@ def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
     elif len(matches) == 1:
         chosen = matches[0]
     elif matches:
-        logging.warning(
+        logger.warning(
             "api_key_file %s assigns several variables but not %s", path, env_name
         )
         return None
@@ -184,24 +186,24 @@ def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
     return None
 
 
-def fetch_litellm_registry(url: str = LITELLM_REGISTRY_URL) -> Dict[str, Any]:
+def fetch_litellm_registry(url: str = LITELLM_REGISTRY_URL) -> dict[str, Any]:
     """Fetch the LiteLLM model registry JSON. Returns {} on any failure."""
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict):
-            logging.warning("LiteLLM registry was not a dict; treating as empty")
+            logger.warning("LiteLLM registry was not a dict; treating as empty")
             return {}
         return data
     except (requests.RequestException, ValueError) as e:
-        logging.warning("Could not fetch LiteLLM registry (%s); treating as empty", e)
+        logger.warning("Could not fetch LiteLLM registry (%s); treating as empty", e)
         return {}
 
 
 def lookup_pdf_support(
-    registry: Dict[str, Any], model_id: str, provider: str
-) -> Optional[bool]:
+    registry: dict[str, Any], model_id: str, provider: str
+) -> bool | None:
     """Look up `supports_pdf_input` for a model. Returns:
         True/False if the registry has a definitive answer.
         None if the model is unknown, or its entry has no/null pdf flag.
@@ -219,8 +221,8 @@ def lookup_pdf_support(
 
 
 def lookup_vision_support(
-    registry: Dict[str, Any], model_id: str, provider: str
-) -> Optional[bool]:
+    registry: dict[str, Any], model_id: str, provider: str
+) -> bool | None:
     """Look up `supports_vision` for a model in the LiteLLM registry."""
     candidates = [model_id, f"{provider}/{model_id}"]
     for key in candidates:
@@ -290,7 +292,7 @@ _NON_CHAT_NAME_SUBSTRINGS = (
 )
 
 
-def filter_chat_models(provider: str, model_ids: List[str]) -> List[str]:
+def filter_chat_models(provider: str, model_ids: list[str]) -> list[str]:
     """Keep only chat-capable model ids per provider rules.
 
     A global substring blocklist (`_NON_CHAT_NAME_SUBSTRINGS`) drops names that
@@ -389,10 +391,10 @@ def format_header(provider: str, endpoint: str) -> str:
 
 def format_model_line(
     model: str,
-    supports_pdf: Optional[bool] = None,
-    supports_vision: Optional[bool] = None,
-    pdf_strategy: Optional[str] = None,
-    error: Optional[str] = None,
+    supports_pdf: bool | None = None,
+    supports_vision: bool | None = None,
+    pdf_strategy: str | None = None,
+    error: str | None = None,
 ) -> str:
     if error is not None:
         return f"\t{ASCII_X}  Model: {model}  [ Error: {error} ]"
@@ -430,7 +432,7 @@ def derive_pdf_strategy(
 
 
 def format_provider_summary(
-    provider: str, success: bool, error: Optional[str] = None
+    provider: str, success: bool, error: str | None = None
 ) -> str:
     if success:
         return f"{GREEN_CHECK} {provider}  Model list updated"
@@ -495,14 +497,14 @@ def _is_capability_rejection(body_text: str, kind: str) -> bool:
     return any(m in lowered for m in markers)
 
 
-def _bearer_headers(api_key: Optional[str]) -> Dict[str, str]:
+def _bearer_headers(api_key: str | None) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
 
 
-def _openai_compat_pdf_payload(model: str) -> Dict[str, Any]:
+def _openai_compat_pdf_payload(model: str) -> dict[str, Any]:
     return {
         "model": model,
         "max_tokens": 1,
@@ -523,7 +525,7 @@ def _openai_compat_pdf_payload(model: str) -> Dict[str, Any]:
     }
 
 
-def _openai_compat_image_payload(model: str) -> Dict[str, Any]:
+def _openai_compat_image_payload(model: str) -> dict[str, Any]:
     return {
         "model": model,
         "max_tokens": 1,
@@ -547,12 +549,12 @@ def _openai_compat_image_payload(model: str) -> Dict[str, Any]:
 class OpenAICompatProvider:
     name = "lmstudio"
 
-    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+    def __init__(self, api_endpoint: str, api_key: str | None):
         self.api_endpoint = api_endpoint
         self.api_key = api_key
         self.models_url = derive_models_url(api_endpoint)
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         response = requests.get(
             self.models_url, headers=_bearer_headers(self.api_key), timeout=15
         )
@@ -614,7 +616,7 @@ class XAIProvider(OpenAICompatProvider):
 
         # PDF probe via Files API + Responses API.
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             pdf_bytes = base64.b64decode(MINIMAL_PDF_B64)
             upload_resp = requests.post(
@@ -684,7 +686,7 @@ class LMStudioProvider(OpenAICompatProvider):
     name = "lmstudio"
 
     @property
-    def _rich_models_url(self) -> Optional[str]:
+    def _rich_models_url(self) -> str | None:
         # The LMStudio-specific endpoint that returns type/capabilities.
         # Derive from api_endpoint by replacing /v1/chat/completions with /api/v0/models.
         # Fall back gracefully if the endpoint doesn't match the expected shape.
@@ -693,7 +695,7 @@ class LMStudioProvider(OpenAICompatProvider):
             return self.api_endpoint[: -len(suffix)] + "/api/v0/models"
         return None
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         rich_url = self._rich_models_url
         if rich_url:
             try:
@@ -720,7 +722,7 @@ class LMStudioProvider(OpenAICompatProvider):
 class AnthropicProvider:
     name = "anthropic"
 
-    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+    def __init__(self, api_endpoint: str, api_key: str | None):
         self.api_endpoint = api_endpoint
         self.api_key = api_key
 
@@ -731,9 +733,9 @@ class AnthropicProvider:
         # if neither is set, the SDK raises on first call.
         return anthropic.Anthropic(api_key=self.api_key) if self.api_key else anthropic.Anthropic()
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         client = self._client()
-        ids: List[str] = []
+        ids: list[str] = []
         # SDK paginates automatically when iterating
         for entry in client.models.list():
             mid = getattr(entry, "id", None)
@@ -789,7 +791,7 @@ class AnthropicProvider:
 class OpenAIProvider:
     name = "openai"
 
-    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+    def __init__(self, api_endpoint: str, api_key: str | None):
         self.api_endpoint = api_endpoint
         self.api_key = api_key
 
@@ -801,9 +803,9 @@ class OpenAIProvider:
             kwargs["api_key"] = self.api_key
         return openai.OpenAI(**kwargs)
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         client = self._client()
-        ids: List[str] = []
+        ids: list[str] = []
         for entry in client.models.list():
             mid = getattr(entry, "id", None)
             if mid:
@@ -846,7 +848,7 @@ class OpenAIProvider:
 class GoogleProvider:
     name = "google"
 
-    def __init__(self, api_endpoint: str, api_key: Optional[str]):
+    def __init__(self, api_endpoint: str, api_key: str | None):
         self.api_endpoint = api_endpoint
         self.api_key = api_key
 
@@ -864,7 +866,7 @@ class GoogleProvider:
     # round trips. Hit the REST endpoint directly instead: it returns the full
     # list in a single request and uses `requests`, which is already a
     # dependency (and avoids importing the heavy SDK in the default path).
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         base = self.api_endpoint.rstrip("/")
         url = f"{base}/v1beta/models"
         api_key = (
@@ -874,10 +876,10 @@ class GoogleProvider:
         )
         headers = {"x-goog-api-key": api_key} if api_key else {}
 
-        ids: List[str] = []
-        page_token: Optional[str] = None
+        ids: list[str] = []
+        page_token: str | None = None
         while True:
-            params: Dict[str, Any] = {"pageSize": 1000}
+            params: dict[str, Any] = {"pageSize": 1000}
             if page_token:
                 params["pageToken"] = page_token
             response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -929,7 +931,7 @@ class GoogleProvider:
             return ProbeResult(succeeded=False, supports=None, error=msg[:300])
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Update available_models and pdf_strategy in config.json"
     )
@@ -966,10 +968,10 @@ PROVIDER_CLASSES = {
 class ProviderSummary:
     provider: str
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
-def build_client(provider_name: str, provider_block: Dict[str, Any]):
+def build_client(provider_name: str, provider_block: dict[str, Any]):
     cls = PROVIDER_CLASSES.get(provider_name)
     if cls is None:
         raise ValueError(f"No client class for provider {provider_name!r}")
@@ -990,11 +992,11 @@ def build_client(provider_name: str, provider_block: Dict[str, Any]):
 
 def process_provider(
     provider_name: str,
-    provider_block: Dict[str, Any],
+    provider_block: dict[str, Any],
     client,
-    registry: Dict[str, Any],
+    registry: dict[str, Any],
     enable_probing: bool,
-) -> "tuple[Dict[str, Any], ProviderSummary]":
+) -> "tuple[dict[str, Any], ProviderSummary]":
     """Drive one provider end-to-end. Returns (new_block, summary).
 
     On any failure to list models, returns the original block unchanged and a
@@ -1013,8 +1015,8 @@ def process_provider(
 
     filtered = sorted(set(filter_chat_models(provider_name, raw_ids)))
 
-    new_pdf_strategy: Dict[str, str] = {}
-    kept_models: List[str] = []
+    new_pdf_strategy: dict[str, str] = {}
+    kept_models: list[str] = []
 
     for mid in filtered:
         pdf_known = lookup_pdf_support(registry, mid, provider_name)
@@ -1022,7 +1024,7 @@ def process_provider(
 
         # Decide pdf support
         if pdf_known is not None:
-            pdf_value: Optional[bool] = pdf_known
+            pdf_value: bool | None = pdf_known
         elif enable_probing:
             r = client.probe(mid, "pdf")
             if not r.succeeded:
@@ -1035,7 +1037,7 @@ def process_provider(
 
         # Decide vision support
         if vision_known is not None:
-            vision_value: Optional[bool] = vision_known
+            vision_value: bool | None = vision_known
         elif enable_probing:
             r = client.probe(mid, "image")
             if not r.succeeded:
@@ -1071,7 +1073,7 @@ def process_provider(
     return new_block, ProviderSummary(provider=provider_name, success=True)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     # Avoid multi-minute stalls on networks with broken IPv6 routing (see
     # prefer_ipv4 docstring). Affects the registry fetch and every provider.
@@ -1093,7 +1095,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ):
             logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    with open(CONFIG_PATH, "r") as f:
+    with open(CONFIG_PATH) as f:
         config = json.load(f)
 
     providers = config.get("llm", {}).get("providers", {})
@@ -1109,7 +1111,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     registry = fetch_litellm_registry()
 
-    summaries: List[ProviderSummary] = []
+    summaries: list[ProviderSummary] = []
     new_config = copy.deepcopy(config)
 
     for provider_name in provider_names:
@@ -1145,13 +1147,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print()
 
     if args.dry_run:
-        logging.info("--dry-run: not writing config.json")
+        logger.info("--dry-run: not writing config.json")
     else:
         any_success = any(s.success for s in summaries)
         if any_success:
             atomic_write_json(CONFIG_PATH, new_config)
         else:
-            logging.warning("All providers failed; not writing config.json")
+            logger.warning("All providers failed; not writing config.json")
 
     # Exit non-zero if any provider failed
     return 0 if all(s.success for s in summaries) else 1

@@ -4,6 +4,7 @@ Scan Namer - Automatically rename scanned documents in Google Drive
 using LLM analysis of document content.
 """
 import argparse
+import base64
 import io
 import json
 import logging
@@ -12,23 +13,23 @@ import re
 import socket
 import sys
 import tempfile
+from datetime import datetime
 
 # from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import base64
-from datetime import datetime
+from typing import Any
+
+import pypdf
+import pytesseract
 
 # ignore lint errors related to unresolved imports; using uv to avoid using venv
 import requests
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-import pypdf
-from dotenv import load_dotenv
-import pytesseract
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from pdf2image import convert_from_path
 
 
@@ -61,6 +62,8 @@ def prefer_ipv4() -> None:
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
+logger = logging.getLogger(__name__)
+
 
 class ConfigManager:
     """Manages configuration loading and validation."""
@@ -70,17 +73,17 @@ class ConfigManager:
         self.config = self._load_config()
         self._validate_config()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from JSON file."""
         try:
-            with open(self.config_file, "r") as f:
+            with open(self.config_file) as f:
                 config_data = json.load(f)
                 return config_data
         except FileNotFoundError:
-            logging.error(f"Configuration file {self.config_file} not found")
+            logger.error(f"Configuration file {self.config_file} not found")
             sys.exit(1)
         except json.JSONDecodeError as e:
-            logging.error(f"Invalid JSON in {self.config_file}: {e}")
+            logger.error(f"Invalid JSON in {self.config_file}: {e}")
             sys.exit(1)
 
     def _validate_config(self) -> None:
@@ -88,7 +91,7 @@ class ConfigManager:
         required_sections = ["llm", "pdf", "google_drive", "logging"]
         for section in required_sections:
             if section not in self.config:
-                logging.error(f"Missing required config section: {section}")
+                logger.error(f"Missing required config section: {section}")
                 sys.exit(1)
 
     def get(self, key_path: str, default=None) -> Any:
@@ -150,7 +153,7 @@ class ConfigManager:
             try:
                 return int(value)
             except ValueError:
-                logging.warning(f"Invalid integer value for {key_path}: {value}")
+                logger.warning(f"Invalid integer value for {key_path}: {value}")
                 return None
 
         # Float conversions
@@ -158,7 +161,7 @@ class ConfigManager:
             try:
                 return float(value)
             except ValueError:
-                logging.warning(f"Invalid float value for {key_path}: {value}")
+                logger.warning(f"Invalid float value for {key_path}: {value}")
                 return None
 
         # Boolean conversions
@@ -176,20 +179,20 @@ class PromptManager:
         self.prompts_file = prompts_file
         self.prompts = self._load_prompts()
 
-    def _load_prompts(self) -> Dict[str, Any]:
+    def _load_prompts(self) -> dict[str, Any]:
         """Load prompts from JSON file."""
         try:
-            with open(self.prompts_file, "r") as f:
+            with open(self.prompts_file) as f:
                 prompts_data = json.load(f)
                 return prompts_data
         except FileNotFoundError:
-            logging.error(f"Prompts file {self.prompts_file} not found")
+            logger.error(f"Prompts file {self.prompts_file} not found")
             sys.exit(1)
         except json.JSONDecodeError as e:
-            logging.error(f"Invalid JSON in {self.prompts_file}: {e}")
+            logger.error(f"Invalid JSON in {self.prompts_file}: {e}")
             sys.exit(1)
 
-    def get_prompt(self, prompt_key: str) -> Dict[str, Any]:
+    def get_prompt(self, prompt_key: str) -> dict[str, Any]:
         """Get prompt configuration by key."""
         if prompt_key not in self.prompts:
             raise ValueError(f"Prompt key '{prompt_key}' not found")
@@ -201,7 +204,7 @@ class GoogleDriveManager:
 
     def __init__(self, config: ConfigManager):
         self.config = config
-        self.service: Optional[Any] = None
+        self.service: Any | None = None
         self._authenticate()
 
     def _authenticate(self) -> None:
@@ -220,38 +223,38 @@ class GoogleDriveManager:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
-                    logging.info("Refreshed Google Drive credentials")
+                    logger.info("Refreshed Google Drive credentials")
                 except Exception as e:
-                    logging.warning(f"Failed to refresh credentials: {e}")
+                    logger.warning(f"Failed to refresh credentials: {e}")
                     creds = None
 
             if not creds:
                 if not creds_file or not os.path.exists(creds_file):
-                    logging.error(
+                    logger.error(
                         f"Google Drive credentials file {creds_file} not found"
                     )
-                    logging.error(
+                    logger.error(
                         "Please download OAuth 2.0 credentials from Google Cloud Console"
                     )
                     sys.exit(1)
 
                 flow = InstalledAppFlow.from_client_secrets_file(creds_file, scopes)
                 creds = flow.run_local_server(port=0)
-                logging.info("Completed Google Drive OAuth flow")
+                logger.info("Completed Google Drive OAuth flow")
 
             # Save the credentials
             if token_file:
                 with open(token_file, "w") as token:
                     token.write(creds.to_json())
-                logging.info(f"Saved credentials to {token_file}")
+                logger.info(f"Saved credentials to {token_file}")
 
         self.service = build("drive", "v3", credentials=creds)
-        logging.info("Successfully authenticated with Google Drive")
+        logger.info("Successfully authenticated with Google Drive")
 
-    def list_folders(self, parent_id: str = "root") -> List[Dict[str, Any]]:
+    def list_folders(self, parent_id: str = "root") -> list[dict[str, Any]]:
         """List folders in Google Drive."""
         if self.service is None:
-            logging.error("Google Drive service not initialized")
+            logger.error("Google Drive service not initialized")
             return []
         try:
             query = f"'{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -262,10 +265,10 @@ class GoogleDriveManager:
             )
             return results.get("files", [])
         except HttpError as e:
-            logging.error(f"Error listing folders: {e}")
+            logger.error(f"Error listing folders: {e}")
             return []
 
-    def select_folder(self) -> Optional[str]:
+    def select_folder(self) -> str | None:
         """Allow user to select a Google Drive folder."""
         print("\nAvailable folders in your Google Drive:")
         folders = self.list_folders()
@@ -285,7 +288,7 @@ class GoogleDriveManager:
 
             if 1 <= choice_num <= len(folders):
                 selected = folders[choice_num - 1]
-                logging.info(
+                logger.info(
                     f"Selected folder: {selected['name']} (ID: {selected['id']})"
                 )
                 return selected["id"]
@@ -299,7 +302,7 @@ class GoogleDriveManager:
             print("Invalid input or cancelled")
             return None
 
-    def resolve_folder(self, name: str) -> Optional[str]:
+    def resolve_folder(self, name: str) -> str | None:
         """Resolve a root folder by name (case-insensitive).
 
         Returns the folder id on a single unambiguous match. On no match or
@@ -310,24 +313,24 @@ class GoogleDriveManager:
         matches = [f for f in folders if f.get("name", "").lower() == name.lower()]
         if len(matches) == 1:
             selected = matches[0]
-            logging.info(
+            logger.info(
                 f"Using configured folder: {selected['name']} (ID: {selected['id']})"
             )
             return selected["id"]
         if not matches:
-            logging.warning(
+            logger.warning(
                 f"Folder '{name}' not found in Google Drive root; showing selection menu"
             )
         else:
-            logging.warning(
+            logger.warning(
                 f"Multiple folders named '{name}' found; showing selection menu"
             )
         return None
 
-    def list_pdfs(self, folder_id: str) -> List[Dict[str, Any]]:
+    def list_pdfs(self, folder_id: str) -> list[dict[str, Any]]:
         """List PDF files in a Google Drive folder."""
         if self.service is None:
-            logging.error("Google Drive service not initialized")
+            logger.error("Google Drive service not initialized")
             return []
         try:
             query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
@@ -341,16 +344,16 @@ class GoogleDriveManager:
                 .execute()
             )
             files = results.get("files", [])
-            logging.info(f"Found {len(files)} PDF files in folder")
+            logger.info(f"Found {len(files)} PDF files in folder")
             return files
         except HttpError as e:
-            logging.error(f"Error listing PDFs: {e}")
+            logger.error(f"Error listing PDFs: {e}")
             return []
 
     def download_file(self, file_id: str, output_path: str) -> bool:
         """Download a file from Google Drive."""
         if self.service is None:
-            logging.error("Google Drive service not initialized")
+            logger.error("Google Drive service not initialized")
             return False
         try:
             request = self.service.files().get_media(fileId=file_id)
@@ -359,31 +362,31 @@ class GoogleDriveManager:
                 done = False
                 while not done:
                     status, done = downloader.next_chunk()
-            logging.debug(f"Downloaded file to {output_path}")
+            logger.debug(f"Downloaded file to {output_path}")
             return True
         except HttpError as e:
-            logging.error(f"Error downloading file: {e}")
+            logger.error(f"Error downloading file: {e}")
             return False
 
     def rename_file(self, file_id: str, new_name: str) -> bool:
         """Rename a file in Google Drive."""
         if self.service is None:
-            logging.error("Google Drive service not initialized")
+            logger.error("Google Drive service not initialized")
             return False
         try:
             self.service.files().update(
                 fileId=file_id, body={"name": new_name}
             ).execute()
-            logging.info(f"Renamed file to: {new_name}")
+            logger.info(f"Renamed file to: {new_name}")
             return True
         except HttpError as e:
-            logging.error(f"Error renaming file: {e}")
+            logger.error(f"Error renaming file: {e}")
             return False
 
     def update_file(self, file_id: str, file_path: str) -> bool:
         """Update a file in Google Drive with a new version."""
         if self.service is None:
-            logging.error("Google Drive service not initialized")
+            logger.error("Google Drive service not initialized")
             return False
         try:
             # Create media upload object
@@ -394,13 +397,13 @@ class GoogleDriveManager:
             # Update the file
             self.service.files().update(fileId=file_id, media_body=media).execute()
 
-            logging.info(f"Updated file {file_id} with new content from {file_path}")
+            logger.info(f"Updated file {file_id} with new content from {file_path}")
             return True
         except HttpError as e:
-            logging.error(f"Error updating file: {e}")
+            logger.error(f"Error updating file: {e}")
             return False
         except Exception as e:
-            logging.error(f"Unexpected error updating file: {e}")
+            logger.error(f"Unexpected error updating file: {e}")
             return False
 
 
@@ -419,11 +422,11 @@ class PDFProcessor:
                 reader = pypdf.PdfReader(f)
                 return len(reader.pages)
         except Exception as e:
-            logging.error(f"Error reading PDF {pdf_path}: {e}")
+            logger.error(f"Error reading PDF {pdf_path}: {e}")
             return 0
 
     def extract_pages(
-        self, input_path: str, output_path: str, num_pages: Optional[int] = None
+        self, input_path: str, output_path: str, num_pages: int | None = None
     ) -> bool:
         """Extract first N pages from PDF to a new file."""
         if num_pages is None:
@@ -445,13 +448,13 @@ class PDFProcessor:
                 with open(output_path, "wb") as output_file:
                     writer.write(output_file)
 
-            logging.debug(f"Extracted {pages_to_extract} pages to {output_path}")
+            logger.debug(f"Extracted {pages_to_extract} pages to {output_path}")
             return True
         except Exception as e:
-            logging.error(f"Error extracting pages: {e}")
+            logger.error(f"Error extracting pages: {e}")
             return False
 
-    def extract_text(self, pdf_path: str, max_pages: Optional[int] = None) -> str:
+    def extract_text(self, pdf_path: str, max_pages: int | None = None) -> str:
         """Extract text content from PDF for LLM analysis."""
         if max_pages is None:
             extraction_pages = self.config.get("pdf.extraction_pages", 3)
@@ -475,13 +478,13 @@ class PDFProcessor:
                         )
 
             full_text = "\n\n".join(text_content)
-            logging.debug(
+            logger.debug(
                 f"Extracted {len(full_text)} characters of text from {pages_to_process} pages"
             )
             return full_text
 
         except Exception as e:
-            logging.error(f"Error extracting text from PDF {pdf_path}: {e}")
+            logger.error(f"Error extracting text from PDF {pdf_path}: {e}")
             return ""
 
     def should_extract(self, page_count: int) -> bool:
@@ -492,7 +495,7 @@ class PDFProcessor:
         return page_count > 3
 
     def detect_image_only_pdf(
-        self, pdf_path: str, min_text_per_page: Optional[int] = None
+        self, pdf_path: str, min_text_per_page: int | None = None
     ) -> bool:
         """Detect if a PDF contains only images with no extractable text."""
         if min_text_per_page is None:
@@ -515,7 +518,7 @@ class PDFProcessor:
             # If average text per page is less than threshold, consider it image-only
             is_image_only = avg_text_per_page < min_text_per_page
 
-            logging.debug(
+            logger.debug(
                 f"PDF text analysis: {total_text_length} chars across {page_count} pages "
                 f"(avg: {avg_text_per_page:.1f} chars/page). Image-only: {is_image_only}"
             )
@@ -523,10 +526,10 @@ class PDFProcessor:
             return is_image_only
 
         except Exception as e:
-            logging.error(f"Error detecting image-only PDF: {e}")
+            logger.error(f"Error detecting image-only PDF: {e}")
             return False
 
-    def perform_ocr(self, pdf_path: str, language: Optional[str] = None) -> List[str]:
+    def perform_ocr(self, pdf_path: str, language: str | None = None) -> list[str]:
         """Perform OCR on a PDF and return text for each page."""
         ocr_results = []
 
@@ -537,28 +540,28 @@ class PDFProcessor:
 
         try:
             # Convert PDF to images
-            logging.info(f"Converting PDF to images for OCR (DPI: {dpi})...")
+            logger.info(f"Converting PDF to images for OCR (DPI: {dpi})...")
             images = convert_from_path(pdf_path, dpi=dpi)
 
             # Perform OCR on each page
             for i, image in enumerate(images):
-                logging.debug(f"Performing OCR on page {i + 1}/{len(images)}...")
+                logger.debug(f"Performing OCR on page {i + 1}/{len(images)}...")
                 try:
                     text = pytesseract.image_to_string(image, lang=language)
                     ocr_results.append(text)
                 except Exception as e:
-                    logging.error(f"OCR failed on page {i + 1}: {e}")
+                    logger.error(f"OCR failed on page {i + 1}: {e}")
                     ocr_results.append("")
 
-            logging.info(f"OCR completed on {len(images)} pages")
+            logger.info(f"OCR completed on {len(images)} pages")
             return ocr_results
 
         except Exception as e:
-            logging.error(f"Error performing OCR: {e}")
+            logger.error(f"Error performing OCR: {e}")
             return []
 
     def create_searchable_pdf(
-        self, original_pdf_path: str, ocr_text_list: List[str], output_path: str
+        self, original_pdf_path: str, ocr_text_list: list[str], output_path: str
     ) -> bool:
         """Create a searchable PDF by adding OCR text as an invisible layer."""
         try:
@@ -594,11 +597,11 @@ class PDFProcessor:
                 with open(output_path, "wb") as output_file:
                     writer.write(output_file)
 
-                logging.info(f"Created searchable PDF at {output_path}")
+                logger.info(f"Created searchable PDF at {output_path}")
                 return True
 
         except Exception as e:
-            logging.error(f"Error creating searchable PDF: {e}")
+            logger.error(f"Error creating searchable PDF: {e}")
             return False
 
 
@@ -610,7 +613,7 @@ class BaseLLMClient:
         config: ConfigManager,
         provider: str,
         model: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ):
         self.config = config
         self.provider = provider
@@ -618,18 +621,18 @@ class BaseLLMClient:
         # Use command line override if provided, otherwise fall back to config
         if max_tokens is not None:
             self.max_tokens = max_tokens
-            logging.info(f"Using command line override: max_tokens = {max_tokens}")
+            logger.info(f"Using command line override: max_tokens = {max_tokens}")
         else:
             self.max_tokens = config.get("llm.max_tokens", 1000)
         self.temperature = config.get("llm.temperature", 0.3)
-        self.token_costs: List[Dict[str, Any]] = []
+        self.token_costs: list[dict[str, Any]] = []
 
     def analyze_document(
         self,
-        document_text: Optional[str] = None,
-        prompt_config: Optional[Dict[str, Any]] = None,
-        pdf_path: Optional[str] = None,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        document_text: str | None = None,
+        prompt_config: dict[str, Any] | None = None,
+        pdf_path: str | None = None,
+    ) -> tuple[str | None, dict[str, Any]]:
         """Send document text or PDF to LLM for analysis.
 
         Args:
@@ -646,12 +649,12 @@ class BaseLLMClient:
                 pdf_bytes = pdf_file.read()
                 return base64.b64encode(pdf_bytes).decode("utf-8")
         except Exception as e:
-            logging.error(f"Error encoding PDF to base64: {e}")
+            logger.error(f"Error encoding PDF to base64: {e}")
             return ""
 
     def _parse_secret_file(
         self, path: str, env_var_name: str, any_name: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Read a secret from a file.
 
         Accepts either a raw secret (the file's first non-empty line) or a
@@ -666,10 +669,10 @@ class BaseLLMClient:
         ambiguous and yield None.
         """
         try:
-            with open(path, "r") as f:
+            with open(path) as f:
                 lines = f.readlines()
         except OSError as e:
-            logging.warning(f"Could not read secret file {path}: {e}")
+            logger.warning(f"Could not read secret file {path}: {e}")
             return None
 
         assign = re.compile(
@@ -685,7 +688,7 @@ class BaseLLMClient:
         elif any_name and len(assignments) == 1:
             chosen = assignments[0]
         elif any_name and assignments:
-            logging.warning(
+            logger.warning(
                 f"Secret file {path} assigns several variables but not "
                 f"{env_var_name}; cannot tell which one holds the key"
             )
@@ -704,7 +707,7 @@ class BaseLLMClient:
                 return stripped
         return None
 
-    def _resolve_secret(self, env_var_name: str) -> Optional[str]:
+    def _resolve_secret(self, env_var_name: str) -> str | None:
         """Resolve a secret from the environment, else an app-dir file.
 
         The environment always wins. The file must be named exactly
@@ -718,7 +721,7 @@ class BaseLLMClient:
             return self._parse_secret_file(path, env_var_name)
         return None
 
-    def _api_key_file_path(self) -> Optional[str]:
+    def _api_key_file_path(self) -> str | None:
         """Return this provider's expanded ``api_key_file``, or None if unset.
 
         ``~`` and ``$VAR``/``${VAR}`` references are expanded; the result must
@@ -729,17 +732,17 @@ class BaseLLMClient:
         if raw is None:
             return None
         if not isinstance(raw, str) or not raw.strip():
-            logging.error(f"{key} must be a non-empty path string, got {raw!r}")
+            logger.error(f"{key} must be a non-empty path string, got {raw!r}")
             sys.exit(1)
         path = os.path.expanduser(os.path.expandvars(raw.strip()))
         if "$" in path:
-            logging.error(
+            logger.error(
                 f"{key} {raw!r} references an unset environment variable "
                 f"(expanded to {path!r})"
             )
             sys.exit(1)
         if not os.path.isabs(path):
-            logging.error(
+            logger.error(
                 f"{key} {raw!r} must be an absolute path (expanded to {path!r})"
             )
             sys.exit(1)
@@ -756,11 +759,11 @@ class BaseLLMClient:
         if path is None or os.getenv(env_var_name):
             return
         if not os.path.isfile(path):
-            logging.warning(f"API key file {path} for {self.provider} not found")
+            logger.warning(f"API key file {path} for {self.provider} not found")
             return
         value = self._parse_secret_file(path, env_var_name, any_name=True)
         if not value:
-            logging.warning(f"API key file {path} for {self.provider} holds no key")
+            logger.warning(f"API key file {path} for {self.provider} holds no key")
             return
         os.environ[env_var_name] = value
 
@@ -768,14 +771,14 @@ class BaseLLMClient:
         """Resolve this provider's API key from env, its key file or app-dir file."""
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
         if not isinstance(api_key_env, str):
-            logging.error(
+            logger.error(
                 f"Invalid API key environment variable name for {self.provider}"
             )
             sys.exit(1)
         self._load_api_key_file(api_key_env)
         api_key = self._resolve_secret(api_key_env)
         if not api_key:
-            logging.error(
+            logger.error(
                 f"API key not found. Set environment variable {api_key_env}, "
                 f"set llm.providers.{self.provider}.api_key_file in the config, or "
                 f"place it in a file named {api_key_env} in {APP_DIR}."
@@ -809,7 +812,7 @@ class BaseLLMClient:
         """True if this model has any non-text PDF strategy configured."""
         return self.pdf_strategy() != "none"
 
-    def _rasterize_pdf_to_pngs(self, pdf_path: str) -> List[bytes]:
+    def _rasterize_pdf_to_pngs(self, pdf_path: str) -> list[bytes]:
         """Render the first `pdf.extraction_pages` pages of `pdf_path` to PNG bytes.
 
         Uses the pdf2image library (already a dependency for OCR). Returns an
@@ -828,21 +831,21 @@ class BaseLLMClient:
                 first_page=1,
                 last_page=extraction_pages,
             )
-            png_pages: List[bytes] = []
+            png_pages: list[bytes] = []
             for img in images:
                 buf = io.BytesIO()
                 img.save(buf, format="PNG", optimize=True)
                 png_pages.append(buf.getvalue())
-            logging.info(
+            logger.info(
                 f"Rasterized {len(png_pages)} page(s) from {pdf_path} "
                 f"(dpi={dpi}, max_pages={extraction_pages})"
             )
             return png_pages
         except Exception as e:
-            logging.error(f"Failed to rasterize PDF {pdf_path}: {e}")
+            logger.error(f"Failed to rasterize PDF {pdf_path}: {e}")
             return []
 
-    def get_total_costs(self) -> Dict[str, int]:
+    def get_total_costs(self) -> dict[str, int]:
         """Get total token costs for all requests."""
         if not self.token_costs:
             return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -864,7 +867,7 @@ class XAIClient(BaseLLMClient):
         config: ConfigManager,
         provider: str,
         model: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -889,17 +892,17 @@ class XAIClient(BaseLLMClient):
     def _analyze_pdf_via_files_api(
         self,
         pdf_path: str,
-        prompt_config: Dict[str, Any],
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        prompt_config: dict[str, Any],
+    ) -> tuple[str | None, dict[str, Any]]:
         """Upload PDF via Files API then call Responses API to analyze it."""
         auth_headers = {"Authorization": f"Bearer {self.api_key}"}
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             # Step 1: Upload PDF to Files API
             with open(pdf_path, "rb") as pdf_file:
                 pdf_bytes = pdf_file.read()
 
-            logging.info(f"Uploading PDF to xAI Files API: {pdf_path}")
+            logger.info(f"Uploading PDF to xAI Files API: {pdf_path}")
             upload_resp = requests.post(
                 self._files_url(),
                 headers=auth_headers,
@@ -911,11 +914,11 @@ class XAIClient(BaseLLMClient):
             upload_data = upload_resp.json()
             file_id = upload_data.get("id")
             if not file_id:
-                logging.error(
+                logger.error(
                     f"xAI Files API returned no file id. Response: {upload_resp.text[:300]}"
                 )
                 return None, {}
-            logging.info(f"xAI file uploaded, file_id={file_id}")
+            logger.info(f"xAI file uploaded, file_id={file_id}")
 
             # Step 2: Call Responses API with file_id
             system_prompt = prompt_config.get("system_prompt", "")
@@ -927,13 +930,13 @@ class XAIClient(BaseLLMClient):
             )
 
             # Include system prompt as a leading input_text if present
-            content_blocks: List[Dict[str, Any]] = []
+            content_blocks: list[dict[str, Any]] = []
             if system_prompt:
                 content_blocks.append({"type": "input_text", "text": system_prompt})
             content_blocks.append({"type": "input_text", "text": full_user_text})
             content_blocks.append({"type": "input_file", "file_id": file_id})
 
-            payload: Dict[str, Any] = {
+            payload: dict[str, Any] = {
                 "model": self.model,
                 "input": [
                     {
@@ -947,7 +950,7 @@ class XAIClient(BaseLLMClient):
             resp_headers = dict(auth_headers)
             resp_headers["Content-Type"] = "application/json"
 
-            logging.info(f"Calling xAI Responses API for model {self.model}")
+            logger.info(f"Calling xAI Responses API for model {self.model}")
             response = requests.post(
                 self._responses_url(),
                 headers=resp_headers,
@@ -972,7 +975,7 @@ class XAIClient(BaseLLMClient):
 
             # Parse text from Responses API output shape:
             # output[*].content[*].text  (type == "output_text")
-            suggested_name: Optional[str] = None
+            suggested_name: str | None = None
             output = result.get("output", [])
             for out_item in output:
                 content = out_item.get("content", [])
@@ -991,21 +994,21 @@ class XAIClient(BaseLLMClient):
                     suggested_name = str(suggested_name).strip()
 
             if not suggested_name:
-                logging.error(
+                logger.error(
                     f"xAI Responses API returned no text. Full response: {str(result)[:500]}"
                 )
                 return None, cost_info
 
-            logging.info(f"X.AI suggested filename: {suggested_name}")
+            logger.info(f"X.AI suggested filename: {suggested_name}")
             return suggested_name, cost_info
 
         except requests.HTTPError as e:
             body = getattr(e.response, "text", "") if e.response is not None else ""
             status = e.response.status_code if e.response is not None else "?"
-            logging.error(f"xAI Files/Responses API HTTP {status} error: {body[:300]}")
+            logger.error(f"xAI Files/Responses API HTTP {status} error: {body[:300]}")
             return None, {}
         except Exception as e:
-            logging.error(f"xAI Files/Responses API error: {e}")
+            logger.error(f"xAI Files/Responses API error: {e}")
             return None, {}
         finally:
             if file_id:
@@ -1015,21 +1018,21 @@ class XAIClient(BaseLLMClient):
                         headers=auth_headers,
                         timeout=15,
                     )
-                    logging.debug(f"Deleted xAI file {file_id}")
+                    logger.debug(f"Deleted xAI file {file_id}")
                 except requests.RequestException as e:
-                    logging.warning(f"Could not delete xAI file {file_id}: {e}")
+                    logger.warning(f"Could not delete xAI file {file_id}: {e}")
 
     def _analyze_via_rasterized_pages(
-        self, pdf_path: str, prompt_config: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        self, pdf_path: str, prompt_config: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
         """Rasterize PDF pages to PNG and analyze via chat/completions image_url."""
         try:
             png_pages = self._rasterize_pdf_to_pngs(pdf_path)
             if not png_pages:
-                logging.error("No pages rasterized from PDF")
+                logger.error("No pages rasterized from PDF")
                 return None, {}
 
-            content: List[Dict[str, Any]] = [
+            content: list[dict[str, Any]] = [
                 {
                     "type": "text",
                     "text": (
@@ -1066,7 +1069,7 @@ class XAIClient(BaseLLMClient):
 
             endpoint = self.endpoint
             if not isinstance(endpoint, str):
-                logging.error("Invalid API endpoint configuration")
+                logger.error("Invalid API endpoint configuration")
                 return None, {}
             response = requests.post(
                 endpoint, json=payload, headers=headers, timeout=120
@@ -1083,24 +1086,24 @@ class XAIClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = result["choices"][0]["message"]["content"].strip()
-            logging.info(
+            logger.info(
                 f"X.AI suggested filename (from rasterized PDF): {suggested_name}"
             )
             return suggested_name, cost_info
         except Exception as e:
-            logging.error(f"X.AI rasterized-PDF analysis error: {e}")
+            logger.error(f"X.AI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
         self,
-        document_text: Optional[str] = None,
-        prompt_config: Optional[Dict[str, Any]] = None,
-        pdf_path: Optional[str] = None,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        document_text: str | None = None,
+        prompt_config: dict[str, Any] | None = None,
+        pdf_path: str | None = None,
+    ) -> tuple[str | None, dict[str, Any]]:
         """Send document text or PDF to Grok for analysis."""
         try:
             if prompt_config is None:
-                logging.error("Prompt config is required")
+                logger.error("Prompt config is required")
                 return None, {}
 
             if pdf_path:
@@ -1110,19 +1113,19 @@ class XAIClient(BaseLLMClient):
                 if strategy == "rasterize_to_images":
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 if strategy == "none":
-                    logging.error(
+                    logger.error(
                         f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
-                logging.error(
+                logger.error(
                     f"X.AI client does not implement pdf_strategy='{strategy}' "
                     f"for model {self.model}."
                 )
                 return None, {}
 
             if not document_text:
-                logging.error("Neither document text nor PDF path provided")
+                logger.error("Neither document text nor PDF path provided")
                 return None, {}
 
             # Text path: use chat/completions as before
@@ -1149,7 +1152,7 @@ class XAIClient(BaseLLMClient):
 
             endpoint = self.endpoint
             if not isinstance(endpoint, str):
-                logging.error("Invalid API endpoint configuration")
+                logger.error("Invalid API endpoint configuration")
                 return None, {}
             response = requests.post(
                 endpoint, json=payload, headers=headers, timeout=60
@@ -1166,12 +1169,12 @@ class XAIClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = result["choices"][0]["message"]["content"].strip()
-            logging.info(f"X.AI suggested filename: {suggested_name}")
+            logger.info(f"X.AI suggested filename: {suggested_name}")
 
             return suggested_name, cost_info
 
         except Exception as e:
-            logging.error(f"X.AI API error: {e}")
+            logger.error(f"X.AI API error: {e}")
             return None, {}
 
 
@@ -1183,7 +1186,7 @@ class AnthropicClient(BaseLLMClient):
         config: ConfigManager,
         provider: str,
         model: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -1195,22 +1198,22 @@ class AnthropicClient(BaseLLMClient):
 
             self.client = anthropic.Anthropic(api_key=self.api_key)
         except ImportError:
-            logging.error(
+            logger.error(
                 "Anthropic library not installed. Please install with: pip install anthropic"
             )
             sys.exit(1)
 
     def _analyze_via_rasterized_pages(
-        self, pdf_path: str, prompt_config: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        self, pdf_path: str, prompt_config: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
         """Rasterize PDF pages to PNG and analyze via Anthropic image content blocks."""
         try:
             png_pages = self._rasterize_pdf_to_pngs(pdf_path)
             if not png_pages:
-                logging.error("No pages rasterized from PDF")
+                logger.error("No pages rasterized from PDF")
                 return None, {}
 
-            content: List[Dict[str, Any]] = []
+            content: list[dict[str, Any]] = []
             for png in png_pages:
                 b64 = base64.b64encode(png).decode("utf-8")
                 content.append({
@@ -1245,24 +1248,24 @@ class AnthropicClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.content[0].text.strip()
-            logging.info(
+            logger.info(
                 f"Claude suggested filename (from rasterized PDF): {suggested_name}"
             )
             return suggested_name, cost_info
         except Exception as e:
-            logging.error(f"Anthropic rasterized-PDF analysis error: {e}")
+            logger.error(f"Anthropic rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
         self,
-        document_text: Optional[str] = None,
-        prompt_config: Optional[Dict[str, Any]] = None,
-        pdf_path: Optional[str] = None,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        document_text: str | None = None,
+        prompt_config: dict[str, Any] | None = None,
+        pdf_path: str | None = None,
+    ) -> tuple[str | None, dict[str, Any]]:
         """Send document text or PDF to Claude for analysis."""
         try:
             if prompt_config is None:
-                logging.error("Prompt config is required")
+                logger.error("Prompt config is required")
                 return None, {}
 
             # Prepare message content based on available input
@@ -1296,19 +1299,19 @@ class AnthropicClient(BaseLLMClient):
                 elif strategy == "rasterize_to_images":
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 elif strategy == "none":
-                    logging.error(
+                    logger.error(
                         f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
                 else:
-                    logging.error(
+                    logger.error(
                         f"Anthropic client does not implement pdf_strategy='{strategy}' "
                         f"for model {self.model}."
                     )
                     return None, {}
             else:
-                logging.error("Neither document text nor PDF path provided")
+                logger.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.messages.create(
@@ -1328,12 +1331,12 @@ class AnthropicClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.content[0].text.strip()
-            logging.info(f"Claude suggested filename: {suggested_name}")
+            logger.info(f"Claude suggested filename: {suggested_name}")
 
             return suggested_name, cost_info
 
         except Exception as e:
-            logging.error(f"Anthropic API error: {e}")
+            logger.error(f"Anthropic API error: {e}")
             return None, {}
 
 
@@ -1345,7 +1348,7 @@ class OpenAIClient(BaseLLMClient):
         config: ConfigManager,
         provider: str,
         model: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.api_key = self._get_api_key()
@@ -1357,12 +1360,12 @@ class OpenAIClient(BaseLLMClient):
 
             self.client = openai.OpenAI(api_key=self.api_key)
         except ImportError:
-            logging.error(
+            logger.error(
                 "OpenAI library not installed. Please install with: pip install openai"
             )
             sys.exit(1)
 
-    def _extract_usage(self, response: Any) -> Dict[str, int]:
+    def _extract_usage(self, response: Any) -> dict[str, int]:
         """Extract token usage from a chat-completions response.
 
         Defensive against missing/zero usage fields, which can happen with
@@ -1378,16 +1381,16 @@ class OpenAIClient(BaseLLMClient):
         }
 
     def _analyze_via_rasterized_pages(
-        self, pdf_path: str, prompt_config: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        self, pdf_path: str, prompt_config: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
         """Rasterize PDF pages to PNG and analyze via OpenAI chat/completions image_url."""
         try:
             png_pages = self._rasterize_pdf_to_pngs(pdf_path)
             if not png_pages:
-                logging.error("No pages rasterized from PDF")
+                logger.error("No pages rasterized from PDF")
                 return None, {}
 
-            content: List[Dict[str, Any]] = [
+            content: list[dict[str, Any]] = [
                 {
                     "type": "text",
                     "text": (
@@ -1419,27 +1422,27 @@ class OpenAIClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.choices[0].message.content.strip()
-            logging.info(
+            logger.info(
                 f"OpenAI suggested filename (from rasterized PDF): {suggested_name}"
             )
             return suggested_name, cost_info
         except Exception as e:
-            logging.error(f"OpenAI rasterized-PDF analysis error: {e}")
+            logger.error(f"OpenAI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def _analyze_pdf_via_files_api(
-        self, pdf_path: str, prompt_config: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        self, pdf_path: str, prompt_config: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
         """Upload PDF via Files API, then analyze via Responses API input_file."""
-        file_id: Optional[str] = None
+        file_id: str | None = None
         try:
             with open(pdf_path, "rb") as fh:
                 uploaded = self.client.files.create(file=fh, purpose="user_data")
             file_id = getattr(uploaded, "id", None)
             if not file_id:
-                logging.error("OpenAI Files API returned no file id")
+                logger.error("OpenAI Files API returned no file id")
                 return None, {}
-            logging.info(f"OpenAI file uploaded, file_id={file_id}")
+            logger.info(f"OpenAI file uploaded, file_id={file_id}")
 
             system_prompt = prompt_config.get("system_prompt", "")
             user_prompt = prompt_config.get("user_prompt", "")
@@ -1449,7 +1452,7 @@ class OpenAIClient(BaseLLMClient):
                 else "Please analyze this PDF document:"
             )
 
-            content_blocks: List[Dict[str, Any]] = []
+            content_blocks: list[dict[str, Any]] = []
             if system_prompt:
                 content_blocks.append({"type": "input_text", "text": system_prompt})
             content_blocks.append({"type": "input_text", "text": full_user_text})
@@ -1473,7 +1476,7 @@ class OpenAIClient(BaseLLMClient):
                 )
             self.token_costs.append(cost_info)
 
-            suggested_name: Optional[str] = getattr(response, "output_text", None)
+            suggested_name: str | None = getattr(response, "output_text", None)
             if suggested_name is None:
                 output = getattr(response, "output", None) or []
                 for out_item in output:
@@ -1487,33 +1490,33 @@ class OpenAIClient(BaseLLMClient):
                         break
 
             if not suggested_name:
-                logging.error("OpenAI Responses API returned no text")
+                logger.error("OpenAI Responses API returned no text")
                 return None, cost_info
 
             suggested_name = suggested_name.strip()
-            logging.info(f"OpenAI suggested filename: {suggested_name}")
+            logger.info(f"OpenAI suggested filename: {suggested_name}")
             return suggested_name, cost_info
         except Exception as e:
-            logging.error(f"OpenAI Files/Responses API error: {e}")
+            logger.error(f"OpenAI Files/Responses API error: {e}")
             return None, {}
         finally:
             if file_id:
                 try:
                     self.client.files.delete(file_id)
-                    logging.debug(f"Deleted OpenAI file {file_id}")
+                    logger.debug(f"Deleted OpenAI file {file_id}")
                 except Exception as e:
-                    logging.warning(f"Could not delete OpenAI file {file_id}: {e}")
+                    logger.warning(f"Could not delete OpenAI file {file_id}: {e}")
 
     def analyze_document(
         self,
-        document_text: Optional[str] = None,
-        prompt_config: Optional[Dict[str, Any]] = None,
-        pdf_path: Optional[str] = None,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        document_text: str | None = None,
+        prompt_config: dict[str, Any] | None = None,
+        pdf_path: str | None = None,
+    ) -> tuple[str | None, dict[str, Any]]:
         """Send document text or PDF to OpenAI for analysis."""
         try:
             if prompt_config is None:
-                logging.error("Prompt config is required")
+                logger.error("Prompt config is required")
                 return None, {}
 
             # Prepare message content based on available input
@@ -1533,18 +1536,18 @@ class OpenAIClient(BaseLLMClient):
                 if strategy == "rasterize_to_images":
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 if strategy == "none":
-                    logging.error(
+                    logger.error(
                         f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
-                logging.error(
+                logger.error(
                     f"OpenAI client does not implement pdf_strategy='{strategy}' "
                     f"for model {self.model}."
                 )
                 return None, {}
             else:
-                logging.error("Neither document text nor PDF path provided")
+                logger.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.chat.completions.create(
@@ -1558,12 +1561,12 @@ class OpenAIClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.choices[0].message.content.strip()
-            logging.info(f"OpenAI suggested filename: {suggested_name}")
+            logger.info(f"OpenAI suggested filename: {suggested_name}")
 
             return suggested_name, cost_info
 
         except Exception as e:
-            logging.error(f"OpenAI API error: {e}")
+            logger.error(f"OpenAI API error: {e}")
             return None, {}
 
 
@@ -1597,14 +1600,14 @@ class LMStudioClient(OpenAIClient):
         try:
             import openai
         except ImportError:
-            logging.error(
+            logger.error(
                 "OpenAI library not installed. Please install with: pip install openai"
             )
             sys.exit(1)
 
         endpoint = self.config.get(f"llm.providers.{self.provider}.api_endpoint")
         if not isinstance(endpoint, str) or not endpoint:
-            logging.error(
+            logger.error(
                 f"Invalid or missing api_endpoint for provider {self.provider}"
             )
             sys.exit(1)
@@ -1620,7 +1623,7 @@ class LMStudioClient(OpenAIClient):
         base_url = base_url.rstrip("/")
 
         self.client = openai.OpenAI(api_key=self.api_key, base_url=base_url)
-        logging.info(f"LM Studio client initialized: base_url={base_url}")
+        logger.info(f"LM Studio client initialized: base_url={base_url}")
 
 
 class GoogleClient(BaseLLMClient):
@@ -1631,7 +1634,7 @@ class GoogleClient(BaseLLMClient):
         config: ConfigManager,
         provider: str,
         model: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ):
         super().__init__(config, provider, model, max_tokens)
         self.project_id = self._get_project_id()
@@ -1641,11 +1644,11 @@ class GoogleClient(BaseLLMClient):
     def _get_project_id(self) -> str:
         project_env = self.config.get(f"llm.providers.{self.provider}.project_id_env")
         if not isinstance(project_env, str):
-            logging.error(f"Invalid project ID environment variable name for {self.provider}")
+            logger.error(f"Invalid project ID environment variable name for {self.provider}")
             sys.exit(1)
         project_id = self._resolve_secret(project_env)
         if not project_id:
-            logging.error(
+            logger.error(
                 f"Project ID not found. Set environment variable {project_env} or "
                 f"place it in a file named {project_env} in {APP_DIR}."
             )
@@ -1663,21 +1666,21 @@ class GoogleClient(BaseLLMClient):
             )
 
         except ImportError:
-            logging.error(
+            logger.error(
                 "Google Gen AI library not installed. Please install with: pip install google-genai"
             )
             sys.exit(1)
 
     def _analyze_via_rasterized_pages(
-        self, pdf_path: str, prompt_config: Dict[str, Any]
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        self, pdf_path: str, prompt_config: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
         """Rasterize PDF pages to PNG and analyze via Google Gen AI image parts."""
         try:
             from google.genai import types
 
             png_pages = self._rasterize_pdf_to_pngs(pdf_path)
             if not png_pages:
-                logging.error("No pages rasterized from PDF")
+                logger.error("No pages rasterized from PDF")
                 return None, {}
 
             system_prompt = prompt_config.get("system_prompt", "")
@@ -1687,7 +1690,7 @@ class GoogleClient(BaseLLMClient):
                 "The document is provided as images of its pages."
             )
 
-            contents: List[Any] = [full_prompt]
+            contents: list[Any] = [full_prompt]
             for png in png_pages:
                 contents.append(
                     types.Part.from_bytes(data=png, mime_type="image/png")
@@ -1714,24 +1717,24 @@ class GoogleClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.text.strip()
-            logging.info(
+            logger.info(
                 f"Google AI suggested filename (from rasterized PDF): {suggested_name}"
             )
             return suggested_name, cost_info
         except Exception as e:
-            logging.error(f"Google AI rasterized-PDF analysis error: {e}")
+            logger.error(f"Google AI rasterized-PDF analysis error: {e}")
             return None, {}
 
     def analyze_document(
         self,
-        document_text: Optional[str] = None,
-        prompt_config: Optional[Dict[str, Any]] = None,
-        pdf_path: Optional[str] = None,
-    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        document_text: str | None = None,
+        prompt_config: dict[str, Any] | None = None,
+        pdf_path: str | None = None,
+    ) -> tuple[str | None, dict[str, Any]]:
         """Send document text or PDF to Google Gen AI for analysis."""
         try:
             if prompt_config is None:
-                logging.error("Prompt config is required")
+                logger.error("Prompt config is required")
                 return None, {}
 
             system_prompt = prompt_config.get("system_prompt", "")
@@ -1749,24 +1752,24 @@ class GoogleClient(BaseLLMClient):
                         full_prompt = f"{system_prompt}\n\n{user_prompt}\n\nPlease analyze this PDF document:"
                         contents = [full_prompt, uploaded_file]
                     except Exception as upload_error:
-                        logging.error(f"Failed to upload PDF: {upload_error}")
+                        logger.error(f"Failed to upload PDF: {upload_error}")
                         return None, {}
                 elif strategy == "rasterize_to_images":
                     return self._analyze_via_rasterized_pages(pdf_path, prompt_config)
                 elif strategy == "none":
-                    logging.error(
+                    logger.error(
                         f"Model {self.model} has pdf_strategy='none'; cannot process PDF. "
                         f"Use a PDF-capable model or extract text first."
                     )
                     return None, {}
                 else:
-                    logging.error(
+                    logger.error(
                         f"Google client does not implement pdf_strategy='{strategy}' "
                         f"for model {self.model}."
                     )
                     return None, {}
             else:
-                logging.error("Neither document text nor PDF path provided")
+                logger.error("Neither document text nor PDF path provided")
                 return None, {}
 
             response = self.client.models.generate_content(
@@ -1801,12 +1804,12 @@ class GoogleClient(BaseLLMClient):
             self.token_costs.append(cost_info)
 
             suggested_name = response.text.strip()
-            logging.info(f"Google AI suggested filename: {suggested_name}")
+            logger.info(f"Google AI suggested filename: {suggested_name}")
 
             return suggested_name, cost_info
 
         except Exception as e:
-            logging.error(f"Google AI API error: {e}")
+            logger.error(f"Google AI API error: {e}")
             return None, {}
 
 
@@ -1816,9 +1819,9 @@ class LLMClientFactory:
     @staticmethod
     def create_client(
         config: ConfigManager,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        max_tokens: Optional[int] = None,
+        provider: str | None = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
     ) -> BaseLLMClient:
         """Create appropriate LLM client based on provider."""
         provider_explicit = provider is not None
@@ -1831,7 +1834,7 @@ class LLMClientFactory:
         providers_config = config.get("llm.providers", {})
         if not isinstance(providers_config, dict) or provider not in providers_config:
             available = list(providers_config) if isinstance(providers_config, dict) else []
-            logging.error(f"Unknown provider '{provider}'. Available: {available}")
+            logger.error(f"Unknown provider '{provider}'. Available: {available}")
             sys.exit(1)
 
         # Resolve model:
@@ -1848,7 +1851,7 @@ class LLMClientFactory:
         model = effective_model
 
         if not model:
-            logging.error(
+            logger.error(
                 f"Provider '{provider}' has no default_model configured in config.json"
             )
             sys.exit(1)
@@ -1860,13 +1863,13 @@ class LLMClientFactory:
             and available_models
             and model not in available_models
         ):
-            logging.error(
+            logger.error(
                 f"Model '{model}' is not valid for provider '{provider}'. "
                 f"Available models for '{provider}': {available_models}"
             )
             sys.exit(1)
 
-        logging.info(f"Using {provider} provider with model: {model}")
+        logger.info(f"Using {provider} provider with model: {model}")
 
         # Create appropriate client
         if provider == "xai":
@@ -1880,7 +1883,7 @@ class LLMClientFactory:
         elif provider == "lmstudio":
             return LMStudioClient(config, provider, model, max_tokens)
         else:
-            logging.error(f"No client implementation for provider: {provider}")
+            logger.error(f"No client implementation for provider: {provider}")
             sys.exit(1)
 
 
@@ -1891,13 +1894,13 @@ class ScanNamer:
         self,
         config_file: str = "config.json",
         dry_run: bool = False,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
+        model: str | None = None,
+        provider: str | None = None,
         no_ocr: bool = False,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
         enable_ocr_embedding: bool = False,
-        download_dir: Optional[str] = None,
-        folder_name: Optional[str] = None,
+        download_dir: str | None = None,
+        folder_name: str | None = None,
     ):
         self.config = ConfigManager(config_file)
         self.prompts = PromptManager()
@@ -1909,7 +1912,7 @@ class ScanNamer:
         if download_dir:
             self.download_dir = os.path.expanduser(download_dir)
             if not os.path.isdir(self.download_dir):
-                logging.error(f"Download directory does not exist: {self.download_dir}")
+                logger.error(f"Download directory does not exist: {self.download_dir}")
                 sys.exit(1)
         else:
             self.download_dir = None
@@ -1927,10 +1930,10 @@ class ScanNamer:
 
         # Validate --no-ocr flag with model capabilities
         if self.no_ocr and not self.llm_client.accepts_pdf():
-            logging.warning(
+            logger.warning(
                 f"Warning: --no-ocr flag used with model '{self.llm_client.model}' which has pdf_strategy='none'."
             )
-            logging.warning(
+            logger.warning(
                 "PDF fallback will not work. Consider using a PDF-capable model."
             )
             self._print_pdf_capable_models()
@@ -2024,23 +2027,23 @@ class ScanNamer:
         ]
 
         if capable_models:
-            logging.info(
+            logger.info(
                 f"PDF-capable models for {provider}: {', '.join(capable_models)}"
             )
         else:
-            logging.info(f"No PDF-capable models configured for {provider}")
+            logger.info(f"No PDF-capable models configured for {provider}")
 
-    def process_document(self, file_info: Dict[str, Any], temp_dir: str) -> bool:
+    def process_document(self, file_info: dict[str, Any], temp_dir: str) -> bool:
         """Process a single document."""
         file_id = file_info["id"]
         original_name = file_info["name"]
         document_text = None  # Initialize variable to avoid scope issues
 
-        logging.info(f"Processing: {original_name}")
+        logger.info(f"Processing: {original_name}")
 
         # Check if filename is generic
         if not self._is_generic_filename(original_name):
-            logging.info(f"Skipping non-generic filename: {original_name}")
+            logger.info(f"Skipping non-generic filename: {original_name}")
             return True
 
         # Download the file
@@ -2051,13 +2054,13 @@ class ScanNamer:
         try:
             # Get page count
             page_count = self.pdf_processor.get_page_count(temp_pdf_path)
-            logging.info(f"Document has {page_count} pages")
+            logger.info(f"Document has {page_count} pages")
 
             # Check if OCR embedding is enabled and PDF is image-only
             if self.enable_ocr_embedding and self.pdf_processor.detect_image_only_pdf(
                 temp_pdf_path
             ):
-                logging.info(
+                logger.info(
                     "Detected image-only PDF, performing OCR to create searchable PDF..."
                 )
 
@@ -2077,15 +2080,15 @@ class ScanNamer:
                             if self.drive_manager.update_file(
                                 file_id, searchable_pdf_path
                             ):
-                                logging.info(
+                                logger.info(
                                     "Successfully uploaded searchable PDF to Google Drive"
                                 )
                             else:
-                                logging.error(
+                                logger.error(
                                     "Failed to upload searchable PDF to Google Drive"
                                 )
                         else:
-                            logging.info(
+                            logger.info(
                                 "DRY RUN - Would upload searchable PDF to Google Drive"
                             )
 
@@ -2101,11 +2104,11 @@ class ScanNamer:
                                 if text.strip()
                             ]
                         )
-                        logging.info(
+                        logger.info(
                             f"Extracted {len(document_text)} characters from OCR"
                         )
                 else:
-                    logging.warning(
+                    logger.warning(
                         "OCR produced no results, continuing with normal processing"
                     )
 
@@ -2116,21 +2119,21 @@ class ScanNamer:
             if not use_pdf_upload:
                 # Try to extract text from PDF for LLM analysis
                 if self.pdf_processor.should_extract(page_count):
-                    logging.info(
+                    logger.info(
                         f"Document has {page_count} pages, extracting text from first {self.pdf_processor.extraction_pages}"
                     )
                     document_text = self.pdf_processor.extract_text(
                         temp_pdf_path, self.pdf_processor.extraction_pages
                     )
                 else:
-                    logging.info(
+                    logger.info(
                         f"Document has {page_count} pages, extracting all text"
                     )
                     document_text = self.pdf_processor.extract_text(temp_pdf_path)
 
                 # Check if text extraction failed
                 if not document_text.strip():
-                    logging.warning(
+                    logger.warning(
                         "No text content extracted from PDF - falling back to PDF upload"
                     )
                     use_pdf_upload = True
@@ -2149,42 +2152,42 @@ class ScanNamer:
                         self.pdf_processor.extraction_pages,
                     ):
                         pdf_path_for_upload = shortened_pdf_path
-                        logging.info(
+                        logger.info(
                             f"Using shortened PDF ({self.pdf_processor.extraction_pages} pages) for upload"
                         )
                     else:
                         pdf_path_for_upload = temp_pdf_path
-                        logging.warning(
+                        logger.warning(
                             "Failed to create shortened PDF, using full document"
                         )
                 else:
                     pdf_path_for_upload = temp_pdf_path
-                    logging.info("Using full PDF for upload")
+                    logger.info("Using full PDF for upload")
 
             # Analyze with LLM
             prompt_config = self.prompts.get_prompt("document_naming")
             if document_text:  # type: ignore
-                logging.info("Analyzing document using extracted text")
+                logger.info("Analyzing document using extracted text")
                 suggested_name, cost_info = self.llm_client.analyze_document(
                     document_text=document_text, prompt_config=prompt_config
                 )
             elif pdf_path_for_upload:
-                logging.info("Analyzing document using PDF upload")
+                logger.info("Analyzing document using PDF upload")
                 suggested_name, cost_info = self.llm_client.analyze_document(
                     pdf_path=pdf_path_for_upload, prompt_config=prompt_config
                 )
             else:
-                logging.error("No document content available for analysis")
+                logger.error("No document content available for analysis")
                 return False
 
             if not suggested_name:
-                logging.error("Failed to get filename suggestion from LLM")
+                logger.error("Failed to get filename suggestion from LLM")
                 return False
 
             # Clean and validate the suggested filename
             suggested_name = self._clean_filename(suggested_name)
             if not suggested_name:
-                logging.error("LLM returned invalid filename")
+                logger.error("LLM returned invalid filename")
                 return False
 
             # Ensure the filename has .pdf extension
@@ -2192,7 +2195,7 @@ class ScanNamer:
                 suggested_name += ".pdf"
 
             # Log token costs
-            logging.info(
+            logger.info(
                 f"Token usage - Prompt: {cost_info.get('prompt_tokens', 0)}, "
                 f"Completion: {cost_info.get('completion_tokens', 0)}, "
                 f"Total: {cost_info.get('total_tokens', 0)}"
@@ -2209,21 +2212,21 @@ class ScanNamer:
             else:
                 # Rename the file
                 if self.drive_manager.rename_file(file_id, suggested_name):
-                    logging.info(
+                    logger.info(
                         f"Successfully renamed: {original_name} -> {suggested_name}"
                     )
                     # Download the renamed file if requested
                     if self.download_dir:
                         local_path = os.path.join(self.download_dir, suggested_name)
                         if self.drive_manager.download_file(file_id, local_path):
-                            logging.info(f"Downloaded to: {local_path}")
+                            logger.info(f"Downloaded to: {local_path}")
                         else:
-                            logging.warning(
+                            logger.warning(
                                 f"Failed to download {suggested_name} to {local_path}"
                             )
                     return True
                 else:
-                    logging.error(f"Failed to rename file: {original_name}")
+                    logger.error(f"Failed to rename file: {original_name}")
                     return False
 
         finally:
@@ -2238,20 +2241,20 @@ class ScanNamer:
     def run(self) -> None:
         """Main execution method."""
         try:
-            logging.info("Starting Scan Namer")
+            logger.info("Starting Scan Namer")
 
             # Validate required files exist
             if not os.path.exists(self.config.get("google_drive.credentials_file")):
-                logging.error(
+                logger.error(
                     f"Google Drive credentials file not found: {self.config.get('google_drive.credentials_file')}"
                 )
-                logging.error(
+                logger.error(
                     "Please download OAuth 2.0 credentials from Google Cloud Console"
                 )
                 return
 
             if self.dry_run:
-                logging.info("Running in DRY RUN mode - no files will be renamed")
+                logger.info("Running in DRY RUN mode - no files will be renamed")
 
             # Resolve folder: CLI --folder > config google_drive.folder_name.
             # A unique name match skips the menu; otherwise fall back to it.
@@ -2264,24 +2267,24 @@ class ScanNamer:
             if not folder_id:
                 folder_id = self.drive_manager.select_folder()
             if not folder_id:
-                logging.error("No folder selected")
+                logger.error("No folder selected")
                 return
 
             # Get PDF files
             pdf_files = self.drive_manager.list_pdfs(folder_id)
             if not pdf_files:
-                logging.info("No PDF files found in selected folder")
+                logger.info("No PDF files found in selected folder")
                 return
 
             eligible_files = [
                 f for f in pdf_files if self._is_generic_filename(f["name"])
             ]
-            logging.info(
+            logger.info(
                 f"Found {len(eligible_files)} eligible files with generic names"
             )
 
             if not eligible_files:
-                logging.info("No files with generic names found")
+                logger.info("No files with generic names found")
                 return
 
             # In dry run mode, only process the first file
@@ -2300,26 +2303,26 @@ class ScanNamer:
                         else:
                             failed += 1
                     except Exception as e:
-                        logging.error(
+                        logger.error(
                             f"Unexpected error processing {file_info['name']}: {e}"
                         )
                         failed += 1
 
                 # Summary
                 total_costs = self.llm_client.get_total_costs()
-                logging.info(
+                logger.info(
                     f"Processing complete - Processed: {processed}, Failed: {failed}"
                 )
-                logging.info(
+                logger.info(
                     f"Total token usage - Prompt: {total_costs['prompt_tokens']}, "
                     f"Completion: {total_costs['completion_tokens']}, "
                     f"Total: {total_costs['total_tokens']}"
                 )
 
         except KeyboardInterrupt:
-            logging.info("Process interrupted by user")
+            logger.info("Process interrupted by user")
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             raise
 
 
@@ -2473,7 +2476,7 @@ def main() -> None:
         print("\nOperation cancelled by user")
         sys.exit(1)
     except Exception as e:
-        logging.error(f"Fatal error: {e}")
+        logger.error(f"Fatal error: {e}")
         sys.exit(1)
 
 
