@@ -1,181 +1,61 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Python tool that renames generically named scanned documents in Google Drive (e.g. `20240108_Raven_Scan.pdf`) based on their content, using an LLM. Supports X.AI, Anthropic, OpenAI, Google (google-genai SDK), and LM Studio (local, OpenAI-compatible); documents go to the model as extracted text or, for vision models, as the PDF itself.
 
-## Project Overview
-
-This is a Python-based tool for automatically renaming scanned documents in Google Drive based on their content. The tool supports multiple LLM providers (X.AI, Anthropic, OpenAI, Google) with both text extraction and direct PDF upload capabilities for vision-enabled models. It generates meaningful filenames for generically named scanned documents like "20240108_Raven_Scan.pdf".
-
-## Quick Development Commands
+## Commands
 
 ```bash
-# Run in test mode (no actual renaming)
-./scan-namer --dry-run
-
-# Run with debug logging
-./scan-namer --verbose
-
-# Check available models and their capabilities
-./scan-namer --list-models
-
-# Test with specific provider/model
-./scan-namer --provider anthropic --model claude-sonnet-4-20250514 --dry-run
-
-# Test PDF upload mode (vision models only)
-./scan-namer --no-ocr --dry-run
-
-# Normal operation (requires setup)
-./scan-namer
+./scan-namer --dry-run                          # test without renaming (always use when testing)
+./scan-namer --no-ocr --dry-run                 # force PDF-upload mode (vision models only)
+./scan-namer --enable-ocr-embedding --dry-run   # test OCR detection and embedding
+./scan-namer --list-models                      # models and their PDF support
+./scan-namer --provider anthropic --model <model> --dry-run   # specific provider/model
+./scan-namer --verbose                          # debug logging
+./scan-namer                                    # normal operation (smart auto mode)
+uv run pytest -q                                # unit tests (hermetic: no network or API keys)
 ```
 
-## Core Functionality
+## Workflow
 
-The script workflow:
-- Lists files from a defined Google Drive path
-- Identifies generically named documents using configurable patterns
-- Downloads documents for analysis
-- **OCR Detection**: If `--enable-ocr-embedding` is used, detects image-only PDFs and performs OCR
-- **Text Extraction Mode**: Extracts text from PDFs, shortens large documents to first N pages
-- **PDF Upload Mode**: For image-based PDFs or when `--no-ocr` flag is used, uploads PDF directly to vision models
-- **Smart Fallback**: Automatically switches to PDF upload if text extraction fails
-- Sends content to LLM with customizable prompts to suggest descriptive filenames
-- Validates and cleans suggested filenames according to filesystem rules
-- Renames documents in Google Drive with suggested titles (dry-run mode available)
-- **OCR Embedding**: Creates and uploads searchable PDFs for image-only documents
-- Comprehensive logging with RFC3339 timestamps and token usage tracking
-- Cleans up temporary files (including shortened PDFs and OCR-processed files)
+1. List files under the configured Drive path; select generically named ones by configurable patterns
+2. Download; with `--enable-ocr-embedding`, detect image-only PDFs and OCR them (Tesseract via pytesseract, pdf2image)
+3. Get content to the LLM: extract text (shortening long documents to the first N pages) or, for image-only PDFs / `--no-ocr`, upload the PDF (base64) directly to a vision model. Text-extraction failure falls back to PDF upload automatically when the model supports it
+4. Ask the LLM for a filename using prompts from `prompts.json`; validate and clean it for filesystem rules
+5. Rename in Drive (skipped under `--dry-run`); upload a searchable PDF for OCR'd documents
+6. Log with RFC3339 timestamps, token usage, and cost; clean up temp files even on errors. Drive operations retry with exponential backoff
 
-## Development Status
+PDF support is declared per model in `config.json` and validated early, with warnings for incompatible model/flag combinations.
 
-Core functionality is implemented in `scan_namer.py`. The script includes:
-- **Multi-provider LLM support**: X.AI (Grok), Anthropic (Claude), OpenAI (GPT), Google (Gemini/Vertex AI with modern Gen AI SDK)
-- **PDF processing**: Text extraction, page extraction, base64 encoding for API uploads
-- **OCR capabilities**: Image-only PDF detection, Tesseract OCR integration, searchable PDF creation
-- **Vision model integration**: Direct PDF upload support for image-based documents
-- **Google Drive OAuth**: Authentication, file listing, downloading, renaming, updating
-- **Flexible configuration**: JSON config with environment variable overrides
-- **Comprehensive logging**: RFC3339 timestamps, token usage tracking, detailed operation logs
-- **Model validation**: PDF capability checking, early warnings for incompatible model/flag combinations
-- **Intelligent fallback**: Text extraction with automatic PDF upload fallback
-- **Dry-run mode**: Testing without making actual changes
+## Architecture (`scan_namer.py`)
 
-## Usage
+- **ConfigManager** — JSON config with environment-variable overrides
+- **PromptManager** — loads and formats prompts from `prompts.json`
+- **GoogleDriveManager** — OAuth, list/download/rename/update
+- **PDFProcessor** — text extraction, page shortening, base64 encoding
+- **BaseLLMClient** — abstract provider interface (template method); subclasses `XAIClient`, `AnthropicClient`, `OpenAIClient`, `GoogleClient`
+- **LLMClientFactory** — builds the client for the configured provider
+- **ScanNamer** — orchestrator
 
-Run with the bash wrapper:
-```bash
-./scan-namer --dry-run                    # Test mode
-./scan-namer --no-ocr --dry-run          # Test PDF upload mode
-./scan-namer --list-models               # Show models with PDF support
-./scan-namer --provider anthropic --dry-run  # Test with specific provider
-./scan-namer --verbose                   # Debug logging
-./scan-namer                            # Normal operation (smart auto mode)
-```
+## Files
 
-## Key Integrations
+- `scan-namer` — bash wrapper; `scan_namer.py` — application; `update_models.py` — standalone PEP 723 script
+- `pyproject.toml` — dependencies (managed by uv) and pytest config; `tests/` — unit suite
+- `config.json` — provider settings, model lists, PDF-support flags; `prompts.json` — LLM prompts
+- `.env.example` — environment template; `credentials.json` — Google OAuth credentials (user-supplied); `token.json` — OAuth token cache (generated)
+- `README.md`, `QUICKSTART.md`, `setup_instructions.md` — user docs
 
-- **Google Drive API**: OAuth authentication, file listing, downloading, renaming, and updating
-- **PDF Processing**: Text extraction, page extraction, base64 encoding, temporary file management
-- **OCR Integration**: Tesseract OCR via pytesseract, pdf2image for PDF-to-image conversion
-- **Multi-LLM Integration**: 
-  - X.AI Grok API (vision models: Grok-4, Grok Vision Beta)
-  - Anthropic Claude API (PDF support: Claude 4, 3.5/3.7 Sonnet)
-  - OpenAI GPT API (vision models: GPT-4o, GPT-4o-mini, o3)
-  - Google Vertex AI (vision models: Gemini 2.5 Pro/Flash/Flash-Lite)
-  - LM Studio (local, OpenAI-compatible; vision models supported via rasterized-page upload)
-- **Configuration Management**: JSON config with environment variable overrides
-- **Logging**: RFC3339 formatted logs with token usage and cost tracking
+## Configuration notes
 
-## Code Architecture
+- **Environment variables override JSON config** — check `.env` first when debugging
+- `LLM_PROVIDER` / `LLM_MODEL` override model selection; `GENERIC_FILENAME_PATTERNS` sets the generic-name patterns
+- `PDF_MAX_PAGES_BEFORE_EXTRACTION` and `PDF_EXTRACTION_PAGES` control page shortening
 
-The application follows object-oriented design with clear separation of concerns:
+## Testing
 
-### Core Classes (scan_namer.py)
-- **ConfigManager** (line 45): Handles JSON configuration and environment variable overrides
-- **PromptManager** (line 148): Loads and formats LLM prompts from prompts.json
-- **GoogleDriveManager** (line 175): OAuth authentication, file operations (list, download, rename)
-- **PDFProcessor** (line 335): Text extraction, page shortening, base64 encoding for API uploads
-- **BaseLLMClient** (line 423): Abstract base for LLM providers with standard interface
-  - **XAIClient** (line 491): X.AI/Grok implementation with vision support
-  - **AnthropicClient** (line 614): Claude implementation with PDF upload
-  - **OpenAIClient** (line 721): GPT implementation with vision models
-  - **GoogleClient** (line 834): Gemini implementation using google-genai SDK
-- **LLMClientFactory** (line 953): Creates appropriate LLM client based on provider
-- **ScanNamer** (line 1014): Main orchestrator coordinating all components
+Done gate: `uv run ruff check . && uv run ruff format --check . && uv run pytest -q`
 
-### Key Design Patterns
-- **Factory Pattern**: LLMClientFactory for provider-agnostic client creation
-- **Template Method**: BaseLLMClient defines interface, subclasses implement specifics
-- **Configuration Management**: Centralized config with environment variable overrides
-- **Separation of Concerns**: Each class handles one responsibility (PDF processing, Drive operations, LLM communication)
+Live testing runs against real Drive and LLM APIs: always pass `--dry-run`, test text-extraction and PDF-upload modes separately, and check `--list-models` before testing a specific provider.
 
-## Python Project Structure
+## Learned Preferences
 
-Uses uv for package management. Dependencies are declared in `pyproject.toml` and include:
-- Google API libraries (Drive, OAuth, modern Google Gen AI SDK)
-- LLM provider SDKs (anthropic, openai, requests for X.AI)
-- PDF processing (pypdf)
-- Utilities (python-dotenv, base64, logging)
-
-All dependencies are automatically managed by uv from `pyproject.toml` when running the app or the test suite. The Google integration uses the latest Google Gen AI SDK (google-genai) instead of the deprecated Vertex AI SDK, eliminating deprecation warnings. (`update_models.py` remains a standalone PEP 723 inline-metadata script.)
-
-## Project Files
-
-- `scan_namer.py`: Main application with multi-provider LLM support
-- `scan-namer`: Bash wrapper script for easy execution
-- `pyproject.toml`: Project metadata, dependencies, and pytest configuration
-- `tests/`: pytest unit suite (run with `uv run pytest`)
-- `config.json`: Application configuration including provider settings, model lists, PDF support flags
-- `prompts.json`: LLM prompt templates for document analysis
-- `.env.example`: Template for environment variables with PDF capability indicators
-- `credentials.json`: Google OAuth credentials (user must provide)
-- `token.json`: Google OAuth token cache (generated automatically)
-- `README.md`: Comprehensive documentation with feature overview
-- `QUICKSTART.md`: Quick start guide with PDF mode examples
-- `setup_instructions.md`: Detailed setup with provider-specific instructions
-
-## Commands for Development
-
-### Testing & Validation
-- `./scan-namer --dry-run`: Test functionality without making changes
-- `./scan-namer --no-ocr --dry-run`: Test PDF upload mode
-- `./scan-namer --enable-ocr-embedding --dry-run`: Test OCR detection and processing
-- `./scan-namer --list-models`: Check model PDF capabilities
-- `./scan-namer --verbose`: Enable debug logging
-
-### Provider Testing
-- `./scan-namer --provider anthropic --model claude-sonnet-4-20250514 --dry-run`: Test Claude PDF support
-- `./scan-namer --provider google --model gemini-2.5-flash --dry-run`: Test Gemini vision
-- `./scan-namer --provider openai --model gpt-4o --dry-run`: Test GPT-4o vision
-- `./scan-namer --provider xai --model grok-4-0709 --dry-run`: Test Grok-4 vision
-
-### Configuration Testing
-- Test with different models to validate PDF support flags
-- Test environment variable overrides
-- Test with various PDF types (text-rich vs image-heavy)
-
-## Development Notes
-
-### Testing Approach
-- Unit tests live in `tests/`; run with `uv run pytest -q` (fast, no network or API keys required)
-- Integration/live-API testing still relies on manual runs with real Google Drive and LLM APIs — always use `--dry-run` to avoid unintended renames
-- Always use `--dry-run` flag when testing to avoid unintended file renames
-- Test text extraction and PDF upload modes separately
-- Verify model capabilities with `--list-models` before testing specific providers
-
-### Key Configuration Points
-- **Environment variables always override JSON config** - check `.env` first when debugging
-- **Generic filename patterns** are configurable via `GENERIC_FILENAME_PATTERNS` env var
-- **PDF processing thresholds** controlled by `PDF_MAX_PAGES_BEFORE_EXTRACTION` and `PDF_EXTRACTION_PAGES`
-- **Model selection** can be overridden with `LLM_PROVIDER` and `LLM_MODEL` env vars
-
-### Error Handling Patterns
-- Text extraction failures automatically trigger PDF upload fallback (if model supports it)
-- Model capability validation happens early with clear warnings
-- Temporary files are cleaned up even on errors
-- Google Drive operations use exponential backoff for retries
-
-### Working with LLM Providers
-- Each provider client inherits from BaseLLMClient for consistent interface
-- PDF support is explicitly declared in config.json per model
-- Vision models require base64-encoded PDF content
-- Token usage and costs are logged for all providers
+- No pull requests in this repo: commit small fixes straight to main and merge feature branches/worktrees into main directly (take MODE=direct in deps:bump); ask before pushing unusually large or destructive work.
