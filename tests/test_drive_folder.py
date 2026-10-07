@@ -24,7 +24,5 @@ def test_no_match_returns_none():
 
 
 def test_multiple_matches_returns_none():
-    mgr = _manager(
-        [{"id": "id-1", "name": "Scans"}, {"id": "id-2", "name": "scans"}]
-    )
+    mgr = _manager([{"id": "id-1", "name": "Scans"}, {"id": "id-2", "name": "scans"}])
     assert mgr.resolve_folder("Scans") is None

@@ -3,6 +3,7 @@
 Scan Namer - Automatically rename scanned documents in Google Drive
 using LLM analysis of document content.
 """
+
 import argparse
 import base64
 import io
@@ -682,7 +683,9 @@ class BaseLLMClient:
         matching = [m for m in assignments if m.group(1) == env_var_name]
         # Only upper-case names count as other variables, so a raw key such
         # as "abc123==" is not mistaken for an assignment.
-        assignments = [m for m in assignments if re.fullmatch(r"[A-Z_][A-Z0-9_]*", m.group(1))]
+        assignments = [
+            m for m in assignments if re.fullmatch(r"[A-Z_][A-Z0-9_]*", m.group(1))
+        ]
         if matching:
             chosen = matching[0]
         elif any_name and len(assignments) == 1:
@@ -786,22 +789,22 @@ class BaseLLMClient:
             sys.exit(1)
         return api_key
 
-    PDF_STRATEGIES = frozenset({
-        "inline_base64_document",
-        "files_api_responses",
-        "genai_files_upload",
-        "rasterize_to_images",
-        "none",
-    })
+    PDF_STRATEGIES = frozenset(
+        {
+            "inline_base64_document",
+            "files_api_responses",
+            "genai_files_upload",
+            "rasterize_to_images",
+            "none",
+        }
+    )
 
     def pdf_strategy(self) -> str:
         """Return the configured PDF-handling strategy for this provider+model.
 
         Defaults to "none" if missing or unrecognized.
         """
-        strategies = self.config.get(
-            f"llm.providers.{self.provider}.pdf_strategy", {}
-        )
+        strategies = self.config.get(f"llm.providers.{self.provider}.pdf_strategy", {})
         if isinstance(strategies, dict):
             value = strategies.get(self.model, "none")
             if isinstance(value, str) and value in self.PDF_STRATEGIES:
@@ -906,7 +909,9 @@ class XAIClient(BaseLLMClient):
             upload_resp = requests.post(
                 self._files_url(),
                 headers=auth_headers,
-                files={"file": (os.path.basename(pdf_path), pdf_bytes, "application/pdf")},
+                files={
+                    "file": (os.path.basename(pdf_path), pdf_bytes, "application/pdf")
+                },
                 data={"purpose": "assistants"},
                 timeout=60,
             )
@@ -963,8 +968,12 @@ class XAIClient(BaseLLMClient):
             # Parse usage from Responses API shape
             usage = result.get("usage", {})
             cost_info = {
-                "prompt_tokens": usage.get("input_tokens", usage.get("prompt_tokens", 0)),
-                "completion_tokens": usage.get("output_tokens", usage.get("completion_tokens", 0)),
+                "prompt_tokens": usage.get(
+                    "input_tokens", usage.get("prompt_tokens", 0)
+                ),
+                "completion_tokens": usage.get(
+                    "output_tokens", usage.get("completion_tokens", 0)
+                ),
                 "total_tokens": usage.get("total_tokens", 0),
             }
             if cost_info["total_tokens"] == 0:
@@ -1043,10 +1052,12 @@ class XAIClient(BaseLLMClient):
             ]
             for png in png_pages:
                 b64 = base64.b64encode(png).decode("utf-8")
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
-                })
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    }
+                )
 
             messages = [
                 {
@@ -1216,21 +1227,25 @@ class AnthropicClient(BaseLLMClient):
             content: list[dict[str, Any]] = []
             for png in png_pages:
                 b64 = base64.b64encode(png).decode("utf-8")
-                content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": b64,
-                    },
-                })
-            content.append({
-                "type": "text",
-                "text": (
-                    prompt_config.get("user_prompt", "")
-                    + "\n\nThe document is provided as images of its pages."
-                ),
-            })
+                content.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": b64,
+                        },
+                    }
+                )
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        prompt_config.get("user_prompt", "")
+                        + "\n\nThe document is provided as images of its pages."
+                    ),
+                }
+            )
 
             response = self.client.messages.create(
                 model=self.model,
@@ -1243,7 +1258,8 @@ class AnthropicClient(BaseLLMClient):
             cost_info = {
                 "prompt_tokens": response.usage.input_tokens,
                 "completion_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                "total_tokens": response.usage.input_tokens
+                + response.usage.output_tokens,
             }
             self.token_costs.append(cost_info)
 
@@ -1401,10 +1417,12 @@ class OpenAIClient(BaseLLMClient):
             ]
             for png in png_pages:
                 b64 = base64.b64encode(png).decode("utf-8")
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
-                })
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    }
+                )
 
             messages = [
                 {"role": "system", "content": prompt_config.get("system_prompt", "")},
@@ -1644,7 +1662,9 @@ class GoogleClient(BaseLLMClient):
     def _get_project_id(self) -> str:
         project_env = self.config.get(f"llm.providers.{self.provider}.project_id_env")
         if not isinstance(project_env, str):
-            logger.error(f"Invalid project ID environment variable name for {self.provider}")
+            logger.error(
+                f"Invalid project ID environment variable name for {self.provider}"
+            )
             sys.exit(1)
         project_id = self._resolve_secret(project_env)
         if not project_id:
@@ -1692,9 +1712,7 @@ class GoogleClient(BaseLLMClient):
 
             contents: list[Any] = [full_prompt]
             for png in png_pages:
-                contents.append(
-                    types.Part.from_bytes(data=png, mime_type="image/png")
-                )
+                contents.append(types.Part.from_bytes(data=png, mime_type="image/png"))
 
             response = self.client.models.generate_content(
                 model=self.model,
@@ -1833,7 +1851,9 @@ class LLMClientFactory:
         # Validate provider exists before resolving its model.
         providers_config = config.get("llm.providers", {})
         if not isinstance(providers_config, dict) or provider not in providers_config:
-            available = list(providers_config) if isinstance(providers_config, dict) else []
+            available = (
+                list(providers_config) if isinstance(providers_config, dict) else []
+            )
             logger.error(f"Unknown provider '{provider}'. Available: {available}")
             sys.exit(1)
 
@@ -2126,9 +2146,7 @@ class ScanNamer:
                         temp_pdf_path, self.pdf_processor.extraction_pages
                     )
                 else:
-                    logger.info(
-                        f"Document has {page_count} pages, extracting all text"
-                    )
+                    logger.info(f"Document has {page_count} pages, extracting all text")
                     document_text = self.pdf_processor.extract_text(temp_pdf_path)
 
                 # Check if text extraction failed

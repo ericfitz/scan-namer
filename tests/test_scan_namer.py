@@ -1,4 +1,5 @@
 """Unit tests for scan_namer.py pure helpers."""
+
 import os
 import socket
 import sys

@@ -161,15 +161,22 @@ def test_api_key_file_expands_env_vars_and_tilde(tmp_path, monkeypatch, config):
     monkeypatch.setenv("SCAN_NAMER_TEST_KEYS", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path))
     client = _keyfile_client(
-        config, monkeypatch, tmp_path / "appdir", "$SCAN_NAMER_TEST_KEYS/ANTHROPIC_API_KEY"
+        config,
+        monkeypatch,
+        tmp_path / "appdir",
+        "$SCAN_NAMER_TEST_KEYS/ANTHROPIC_API_KEY",
     )
     assert client._get_api_key() == "key-expanded"
     monkeypatch.delenv("ANTHROPIC_API_KEY")
-    client = _keyfile_client(config, monkeypatch, tmp_path / "appdir", "~/ANTHROPIC_API_KEY")
+    client = _keyfile_client(
+        config, monkeypatch, tmp_path / "appdir", "~/ANTHROPIC_API_KEY"
+    )
     assert client._get_api_key() == "key-expanded"
 
 
-def test_api_key_file_missing_falls_back_to_app_dir(tmp_path, monkeypatch, config, caplog):
+def test_api_key_file_missing_falls_back_to_app_dir(
+    tmp_path, monkeypatch, config, caplog
+):
     client = _keyfile_client(config, monkeypatch, tmp_path, str(tmp_path / "absent"))
     (tmp_path / "ANTHROPIC_API_KEY").write_text("key-appdir\n")
     assert client._get_api_key() == "key-appdir"
@@ -186,7 +193,14 @@ def test_api_key_file_without_key_falls_back_to_app_dir(tmp_path, monkeypatch, c
 
 @pytest.mark.parametrize(
     "bad",
-    ["relative/ANTHROPIC_API_KEY", "", "   ", 42, ["/a"], "$SCAN_NAMER_UNSET_VAR_XYZ/k"],
+    [
+        "relative/ANTHROPIC_API_KEY",
+        "",
+        "   ",
+        42,
+        ["/a"],
+        "$SCAN_NAMER_UNSET_VAR_XYZ/k",
+    ],
 )
 def test_api_key_file_invalid_value_exits(tmp_path, monkeypatch, config, bad):
     monkeypatch.delenv("SCAN_NAMER_UNSET_VAR_XYZ", raising=False)

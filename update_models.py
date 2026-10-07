@@ -144,7 +144,9 @@ def read_api_key_file(raw_path: Any, env_name: str) -> str | None:
     warning and returns None.
     """
     if not isinstance(raw_path, str) or not raw_path.strip():
-        raise ValueError(f"api_key_file must be a non-empty path string, got {raw_path!r}")
+        raise ValueError(
+            f"api_key_file must be a non-empty path string, got {raw_path!r}"
+        )
     path = os.path.expanduser(os.path.expandvars(raw_path.strip()))
     if "$" in path:
         raise ValueError(
@@ -205,8 +207,8 @@ def lookup_pdf_support(
     registry: dict[str, Any], model_id: str, provider: str
 ) -> bool | None:
     """Look up `supports_pdf_input` for a model. Returns:
-        True/False if the registry has a definitive answer.
-        None if the model is unknown, or its entry has no/null pdf flag.
+    True/False if the registry has a definitive answer.
+    None if the model is unknown, or its entry has no/null pdf flag.
     """
     candidates = [model_id, f"{provider}/{model_id}"]
     for key in candidates:
@@ -246,25 +248,17 @@ _OPENAI_NON_CHAT_PREFIXES = (
     "davinci-",
 )
 
-_OPENAI_LEGACY_PREFIXES = (
-    "gpt-3.5-",
-)
+_OPENAI_LEGACY_PREFIXES = ("gpt-3.5-",)
 
 _OPENAI_LEGACY_EXACT = frozenset({"gpt-4", "gpt-4-0613"})
 
 _OPENAI_DATED_SNAPSHOT_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
-_GOOGLE_DEPRECATED_PREFIXES = (
-    "gemini-2.0-",
-)
+_GOOGLE_DEPRECATED_PREFIXES = ("gemini-2.0-",)
 
-_OPENAI_DEPRECATED_PREFIXES = (
-    "o1",
-)
+_OPENAI_DEPRECATED_PREFIXES = ("o1",)
 
-_XAI_DEPRECATED_PREFIXES = (
-    "grok-3",
-)
+_XAI_DEPRECATED_PREFIXES = ("grok-3",)
 
 # Global substring blocklist applied to ALL providers before any provider-specific
 # filtering. Drop names that indicate non-chat use cases: embeddings, rerankers,
@@ -299,9 +293,10 @@ def filter_chat_models(provider: str, model_ids: list[str]) -> list[str]:
     indicate non-chat use cases (embeddings, rerankers, image/audio generation,
     coding-specialized, robotics, etc.) before any provider-specific logic.
     """
+
     def _norm(mid: str) -> str:
         # Some APIs return ids with a "models/" prefix (Google in particular)
-        return mid[len("models/"):] if mid.startswith("models/") else mid
+        return mid[len("models/") :] if mid.startswith("models/") else mid
 
     def _name_excluded(mid: str) -> bool:
         base = _norm(mid).lower()
@@ -450,8 +445,8 @@ _PDF_REJECTION_MARKERS = (
     "file input is not supported",
     "unsupported content",
     "must be a base64 encoded image",  # LMStudio: image_url field won't take PDF
-    "unsupported mime type",           # OpenAI: e.g. "unsupported MIME type 'application/pdf'"
-    "invalid base64-encoded image",    # xAI: when PDF sent via image_url
+    "unsupported mime type",  # OpenAI: e.g. "unsupported MIME type 'application/pdf'"
+    "invalid base64-encoded image",  # xAI: when PDF sent via image_url
     # When a vision-incapable model receives a PDF via image_url it says
     # "image inputs not supported" — that equally means "no PDF support".
     "does not support image",
@@ -731,7 +726,11 @@ class AnthropicProvider:
 
         # If api_key is None, the SDK will read ANTHROPIC_API_KEY from env;
         # if neither is set, the SDK raises on first call.
-        return anthropic.Anthropic(api_key=self.api_key) if self.api_key else anthropic.Anthropic()
+        return (
+            anthropic.Anthropic(api_key=self.api_key)
+            if self.api_key
+            else anthropic.Anthropic()
+        )
 
     def list_models(self) -> list[str]:
         client = self._client()
@@ -780,9 +779,7 @@ class AnthropicProvider:
         except Exception as e:  # noqa: BLE001 — SDK wraps a wide range of errors
             msg = str(e)
             if _is_capability_rejection(msg, kind) or (
-                kind == "pdf"
-                and "document" in msg.lower()
-                and "support" in msg.lower()
+                kind == "pdf" and "document" in msg.lower() and "support" in msg.lower()
             ):
                 return ProbeResult(succeeded=True, supports=False, error=None)
             return ProbeResult(succeeded=False, supports=None, error=msg[:300])
@@ -894,7 +891,7 @@ class GoogleProvider:
                 if not mid:
                     continue
                 if mid.startswith("models/"):
-                    mid = mid[len("models/"):]
+                    mid = mid[len("models/") :]
                 ids.append(mid)
             page_token = data.get("nextPageToken")
             if not page_token:
@@ -949,9 +946,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print what would be written, don't modify config.json",
     )
-    parser.add_argument(
-        "--verbose", action="store_true", help="Enable debug logging"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     return parser.parse_args(argv)
 
 
@@ -977,9 +972,7 @@ def build_client(provider_name: str, provider_block: dict[str, Any]):
         raise ValueError(f"No client class for provider {provider_name!r}")
     api_endpoint = provider_block.get("api_endpoint")
     if not api_endpoint:
-        raise ValueError(
-            f"Provider {provider_name!r} has no api_endpoint in config"
-        )
+        raise ValueError(f"Provider {provider_name!r} has no api_endpoint in config")
     api_key_env = provider_block.get("api_key_env")
     # The environment wins, then api_key_file, then the project-root file.
     api_key = os.environ.get(api_key_env) if api_key_env else None
@@ -1050,12 +1043,14 @@ def process_provider(
         strategy = derive_pdf_strategy(
             provider_name, bool(pdf_value), bool(vision_value)
         )
-        print(format_model_line(
-            mid,
-            supports_pdf=pdf_value,
-            supports_vision=vision_value,
-            pdf_strategy=strategy,
-        ))
+        print(
+            format_model_line(
+                mid,
+                supports_pdf=pdf_value,
+                supports_vision=vision_value,
+                pdf_strategy=strategy,
+            )
+        )
         kept_models.append(mid)
         new_pdf_strategy[mid] = strategy
 
@@ -1101,9 +1096,7 @@ def main(argv: list[str] | None = None) -> int:
     providers = config.get("llm", {}).get("providers", {})
     if args.provider:
         if args.provider not in providers:
-            print(
-                f"{RED_X} {args.provider}  Error: provider not found in config.json"
-            )
+            print(f"{RED_X} {args.provider}  Error: provider not found in config.json")
             return 2
         provider_names = [args.provider]
     else:
