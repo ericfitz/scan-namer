@@ -649,14 +649,21 @@ class BaseLLMClient:
             logging.error(f"Error encoding PDF to base64: {e}")
             return ""
 
-    def _parse_secret_file(self, path: str, env_var_name: str) -> Optional[str]:
+    def _parse_secret_file(
+        self, path: str, env_var_name: str, any_name: bool = False
+    ) -> Optional[str]:
         """Read a secret from a file.
 
         Accepts either a raw secret (the file's first non-empty line) or a
         shell-style assignment line such as:
             export ANTHROPIC_API_KEY=foo
+            source ANTHROPIC_API_KEY="foo"
             ANTHROPIC_API_KEY="foo"
         Surrounding single/double quotes on an assignment value are stripped.
+
+        With ``any_name``, a file whose only assignment names a different
+        variable yields that value; several non-matching assignments are
+        ambiguous and yield None.
         """
         try:
             with open(path, "r") as f:
@@ -666,15 +673,27 @@ class BaseLLMClient:
             return None
 
         assign = re.compile(
-            rf"^\s*(?:export\s+)?{re.escape(env_var_name)}\s*=\s*(.+?)\s*$"
+            r"^\s*(?:(?:export|source)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$"
         )
-        for line in lines:
-            m = assign.match(line)
-            if m:
-                value = m.group(1)
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                    value = value[1:-1]
-                return value or None
+        assignments = [m for m in (assign.match(line) for line in lines) if m]
+        matching = [m for m in assignments if m.group(1) == env_var_name]
+        if matching:
+            chosen = matching[0]
+        elif any_name and len(assignments) == 1:
+            chosen = assignments[0]
+        elif any_name and assignments:
+            logging.warning(
+                f"Secret file {path} assigns several variables but not "
+                f"{env_var_name}; cannot tell which one holds the key"
+            )
+            return None
+        else:
+            chosen = None
+        if chosen:
+            value = chosen.group(2)
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            return value or None
 
         for line in lines:
             stripped = line.strip()
@@ -696,18 +715,65 @@ class BaseLLMClient:
             return self._parse_secret_file(path, env_var_name)
         return None
 
+    def _api_key_file_path(self) -> Optional[str]:
+        """Return this provider's expanded ``api_key_file``, or None if unset.
+
+        ``~`` and ``$VAR``/``${VAR}`` references are expanded; the result must
+        be an absolute path. Invalid values exit with an error.
+        """
+        key = f"llm.providers.{self.provider}.api_key_file"
+        raw = self.config.get(key)
+        if raw is None:
+            return None
+        if not isinstance(raw, str) or not raw.strip():
+            logging.error(f"{key} must be a non-empty path string, got {raw!r}")
+            sys.exit(1)
+        path = os.path.expanduser(os.path.expandvars(raw.strip()))
+        if "$" in path:
+            logging.error(
+                f"{key} {raw!r} references an unset environment variable "
+                f"(expanded to {path!r})"
+            )
+            sys.exit(1)
+        if not os.path.isabs(path):
+            logging.error(
+                f"{key} {raw!r} must be an absolute path (expanded to {path!r})"
+            )
+            sys.exit(1)
+        return path
+
+    def _load_api_key_file(self, env_var_name: str) -> None:
+        """Set ``env_var_name`` from this provider's ``api_key_file``, if any.
+
+        A configured file that is missing, unreadable or holds no key is
+        logged and skipped, leaving the environment as it was.
+        """
+        path = self._api_key_file_path()
+        if path is None:
+            return
+        if not os.path.isfile(path):
+            logging.warning(f"API key file {path} for {self.provider} not found")
+            return
+        value = self._parse_secret_file(path, env_var_name, any_name=True)
+        if not value:
+            logging.warning(f"API key file {path} for {self.provider} holds no key")
+            return
+        os.environ[env_var_name] = value
+
     def _get_api_key(self) -> str:
-        """Resolve this provider's API key from env or app-dir file."""
+        """Resolve this provider's API key from its key file, env or app-dir file."""
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
         if not isinstance(api_key_env, str):
             logging.error(
                 f"Invalid API key environment variable name for {self.provider}"
             )
             sys.exit(1)
+        self._load_api_key_file(api_key_env)
         api_key = self._resolve_secret(api_key_env)
         if not api_key:
             logging.error(
-                f"API key not found. Set environment variable {api_key_env} or "
+                f"API key not found. Set environment variable {api_key_env}, "
+                f"set llm.providers.{self.provider}.api_key_file in the config, or "
                 f"place it in a file named {api_key_env} in {APP_DIR}."
             )
             sys.exit(1)
@@ -1509,12 +1575,14 @@ class LMStudioClient(OpenAIClient):
     def _get_api_key(self) -> str:
         """Return the configured API key, or a placeholder if unset.
 
-        LM Studio does not authenticate by default. Resolve from env or an
-        app-dir file named after ``api_key_env``; if neither is present, return
-        a non-empty placeholder so the openai SDK does not refuse to construct.
+        LM Studio does not authenticate by default. Resolve from the
+        configured ``api_key_file``, env, or an app-dir file named after
+        ``api_key_env``; if none is present, return a non-empty placeholder so
+        the openai SDK does not refuse to construct.
         """
         api_key_env = self.config.get(f"llm.providers.{self.provider}.api_key_env")
         if isinstance(api_key_env, str):
+            self._load_api_key_file(api_key_env)
             api_key = self._resolve_secret(api_key_env)
             if api_key:
                 return api_key

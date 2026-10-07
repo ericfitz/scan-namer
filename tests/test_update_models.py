@@ -107,6 +107,87 @@ class ResolveApiKeyTests(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+class ReadApiKeyFileTests(unittest.TestCase):
+    def _write(self, root, body, name="KEYFILE"):
+        path = os.path.join(root, name)
+        with open(path, "w") as f:
+            f.write(body)
+        return path
+
+    def test_reads_source_form(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self._write(root, 'source MY_KEY="key-src"\n')
+            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-src")
+
+    def test_lone_assignment_of_other_name(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self._write(root, "export OTHER='key-o'\n")
+            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-o")
+
+    def test_ambiguous_assignments_return_none(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self._write(root, "A=1\nB=2\n")
+            self.assertIsNone(update_models.read_api_key_file(path, "MY_KEY"))
+
+    def test_raw_key(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self._write(root, "\nkey-raw\n")
+            self.assertEqual(update_models.read_api_key_file(path, "MY_KEY"), "key-raw")
+
+    def test_expands_env_var(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._write(root, "key-env-path\n")
+            with mock.patch.dict(os.environ, {"UM_TEST_KEYS": root}):
+                result = update_models.read_api_key_file("$UM_TEST_KEYS/KEYFILE", "K")
+        self.assertEqual(result, "key-env-path")
+
+    def test_missing_file_returns_none(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "absent")
+            self.assertIsNone(update_models.read_api_key_file(path, "MY_KEY"))
+
+    def test_rejects_invalid_paths(self):
+        os.environ.pop("UM_UNSET_VAR_XYZ", None)
+        for bad in ("relative/KEY", "", 7, "$UM_UNSET_VAR_XYZ/KEY"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                update_models.read_api_key_file(bad, "MY_KEY")
+
+
+class BuildClientApiKeyTests(unittest.TestCase):
+    def _build(self, block):
+        captured = {}
+
+        class Fake:
+            def __init__(self, api_endpoint, api_key):
+                captured["api_key"] = api_key
+
+        with mock.patch.dict(update_models.PROVIDER_CLASSES, {"fake": Fake}):
+            update_models.build_client("fake", block)
+        return captured["api_key"]
+
+    def test_api_key_file_wins(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "k")
+            with open(path, "w") as f:
+                f.write("export UM_KEY=from-file\n")
+            with mock.patch.dict(os.environ, {"UM_KEY": "from-env"}):
+                key = self._build(
+                    {"api_endpoint": "https://x", "api_key_env": "UM_KEY", "api_key_file": path}
+                )
+        self.assertEqual(key, "from-file")
+
+    def test_falls_back_to_env_when_file_missing(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(
+            os.environ, {"UM_KEY": "from-env"}
+        ):
+            key = self._build({
+                "api_endpoint": "https://x",
+                "api_key_env": "UM_KEY",
+                "api_key_file": os.path.join(root, "absent"),
+            })
+        self.assertEqual(key, "from-env")
+
+
 class FetchLiteLLMRegistryTests(unittest.TestCase):
     def test_returns_parsed_dict_on_success(self):
         sample = {"claude-x": {"supports_pdf_input": True}}

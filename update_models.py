@@ -97,7 +97,7 @@ class ProbeResult:
 
 
 _EXPORT_LINE_RE = re.compile(
-    r"""^\s*(?:export\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>.*?)\s*$"""
+    r"""^\s*(?:(?:export|source)\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>.*?)\s*$"""
 )
 
 
@@ -105,8 +105,9 @@ def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional
     """Resolve an API key by trying a same-named file in project_root, then the
     environment variable, then returning None.
 
-    Files are expected to be in shell-sourceable form: `export NAME=value` or
-    `NAME=value`. Surrounding single or double quotes are stripped.
+    Files are expected to be in shell-sourceable form: `export NAME=value`,
+    `source NAME=value` or `NAME=value`. Surrounding single or double quotes
+    are stripped.
     """
     file_path = os.path.join(project_root, env_name)
     if os.path.isfile(file_path):
@@ -128,6 +129,56 @@ def resolve_api_key(env_name: str, project_root: str = PROJECT_ROOT) -> Optional
             logging.warning("Could not read %s: %s", file_path, e)
 
     return os.environ.get(env_name)
+
+
+def read_api_key_file(raw_path: Any, env_name: str) -> Optional[str]:
+    """Read an API key from a provider's configured `api_key_file`.
+
+    `~` and `$VAR` references in the path are expanded and the result must be
+    absolute; anything else raises ValueError. The file holds a raw key or a
+    shell assignment (`[export|source] NAME=value`); an assignment of
+    `env_name` wins, else a lone assignment of any name. A missing or
+    unreadable file, or one with several non-matching assignments, logs a
+    warning and returns None.
+    """
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError(f"api_key_file must be a non-empty path string, got {raw_path!r}")
+    path = os.path.expanduser(os.path.expandvars(raw_path.strip()))
+    if "$" in path:
+        raise ValueError(
+            f"api_key_file {raw_path!r} references an unset environment variable"
+        )
+    if not os.path.isabs(path):
+        raise ValueError(f"api_key_file {raw_path!r} must be an absolute path")
+    try:
+        with open(path, "r") as f:
+            lines = f.readlines()
+    except OSError as e:
+        logging.warning("Could not read api_key_file %s: %s", path, e)
+        return None
+
+    matches = [m for m in (_EXPORT_LINE_RE.match(line) for line in lines) if m]
+    named = [m for m in matches if m.group("name") == env_name]
+    if named:
+        chosen = named[0]
+    elif len(matches) == 1:
+        chosen = matches[0]
+    elif matches:
+        logging.warning(
+            "api_key_file %s assigns several variables but not %s", path, env_name
+        )
+        return None
+    else:
+        chosen = None
+    if chosen:
+        value = chosen.group("value")
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        return value or None
+    for line in lines:
+        if line.strip():
+            return line.strip()
+    return None
 
 
 def fetch_litellm_registry(url: str = LITELLM_REGISTRY_URL) -> Dict[str, Any]:
@@ -925,7 +976,11 @@ def build_client(provider_name: str, provider_block: Dict[str, Any]):
             f"Provider {provider_name!r} has no api_endpoint in config"
         )
     api_key_env = provider_block.get("api_key_env")
-    api_key = resolve_api_key(api_key_env) if api_key_env else None
+    api_key = None
+    if provider_block.get("api_key_file") is not None:
+        api_key = read_api_key_file(provider_block["api_key_file"], api_key_env or "")
+    if not api_key and api_key_env:
+        api_key = resolve_api_key(api_key_env)
     return cls(api_endpoint=api_endpoint, api_key=api_key)
 
 

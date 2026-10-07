@@ -141,13 +141,35 @@ PDF_EXTRACTION_PAGES=3
 GENERIC_FILENAME_PATTERNS=raven_scan,scan_,document_
 ```
 
-#### Secret-file fallback
+#### Per-provider key settings
 
-If a provider API key (or `GOOGLE_PROJECT_ID`) is not set in the environment, scan-namer also looks for a file named **exactly** like the environment variable (e.g. `ANTHROPIC_API_KEY`) in the application directory. The file may contain the raw key value, or a shell export line; the `export` keyword and surrounding quotes are optional. Both of the following forms are accepted:
+Each provider block in `config.json` (`llm.providers.<provider>`) takes two key settings:
+
+- `api_key_env`: the name of the environment variable that holds the provider's API key. The shipped defaults are `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY` and `LMSTUDIO_API_KEY`; change it to read the key from a different variable.
+- `api_key_file` (optional): an absolute path to a file holding the key. `~` and `$VAR` / `${VAR}` references are expanded. A relative path, an empty value or a reference to an unset variable is a configuration error. The file may hold the raw key or one shell assignment line, with an optional `export` or `source` prefix and optional quotes:
 
 ```
-export ANTHROPIC_API_KEY="sk-ant-..."
-ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY='your-anthropic-key'
+source ANTHROPIC_API_KEY="your-anthropic-key"
+ANTHROPIC_API_KEY=your-anthropic-key
+```
+
+```json
+"anthropic": {
+  "api_key_env": "ANTHROPIC_API_KEY",
+  "api_key_file": "~/.keys/ANTHROPIC_API_KEY"
+}
+```
+
+When `api_key_file` is set and readable, scan-namer loads its key into the variable named by `api_key_env`, replacing any value already in the environment, and then uses that variable. An assignment of that variable wins; a file with a single assignment of another name is also accepted. If the file is missing, holds no key, or assigns several other variables, scan-namer logs a warning and falls back to the environment variable and then the secret file below. `update_models.py` honors `api_key_file` the same way.
+
+#### Secret-file fallback
+
+If a provider API key (or `GOOGLE_PROJECT_ID`) is not set in the environment, scan-namer also looks for a file named **exactly** like the environment variable (e.g. `ANTHROPIC_API_KEY`) in the application directory. The file may contain the raw key value, or a shell assignment line; the `export` (or `source`) keyword and surrounding quotes are optional. Both of the following forms are accepted:
+
+```
+export ANTHROPIC_API_KEY="your-anthropic-key"
+ANTHROPIC_API_KEY=your-anthropic-key
 ```
 
 The environment variable always takes precedence over the file. This fallback applies to each provider's API-key variable (`XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) and to `GOOGLE_PROJECT_ID`.
