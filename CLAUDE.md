@@ -41,7 +41,7 @@ PDF support is declared per model in `config.json` and validated early, with war
 - `scan-namer` — bash wrapper; `scan_namer.py` — application; `update_models.py` — standalone PEP 723 script
 - `pyproject.toml` — dependencies (managed by uv) and pytest config; `tests/` — unit suite
 - `config.json` — provider settings, model lists, PDF-support flags; `prompts.json` — LLM prompts
-- `.env.example` — environment template; `credentials.json` — Google OAuth credentials (user-supplied); `token.json` — OAuth token cache (generated)
+- `.env.example` — environment template; `credentials.json` — Google OAuth credentials (user-supplied; path set by `google_drive.credentials_file`, `~`/`$VAR` expanded); `token.json` — OAuth token cache (generated)
 - `README.md`, `QUICKSTART.md`, `setup_instructions.md` — user docs
 
 ## Configuration notes

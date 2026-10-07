@@ -67,6 +67,28 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 logger = logging.getLogger(__name__)
 
 
+def expand_config_path(key: str, raw: Any, require_absolute: bool = False) -> str:
+    """Expand ``~`` and ``$VAR``/``${VAR}`` in the path configured at ``key``.
+
+    Exits with an error for a non-string or empty value, a reference to an
+    unset variable, or (with ``require_absolute``) a relative result.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        logger.error(f"{key} must be a non-empty path string, got {raw!r}")
+        sys.exit(1)
+    path = os.path.expanduser(os.path.expandvars(raw.strip()))
+    if "$" in path:
+        logger.error(
+            f"{key} {raw!r} references an unset environment variable "
+            f"(expanded to {path!r})"
+        )
+        sys.exit(1)
+    if require_absolute and not os.path.isabs(path):
+        logger.error(f"{key} {raw!r} must be an absolute path (expanded to {path!r})")
+        sys.exit(1)
+    return path
+
+
 class ConfigManager:
     """Manages configuration loading and validation."""
 
@@ -209,11 +231,23 @@ class GoogleDriveManager:
         self.service: Any | None = None
         self._authenticate()
 
+    def _drive_file_path(self, name: str) -> str | None:
+        """Return the expanded ``google_drive.<name>`` path, or None if unset.
+
+        ``~`` and ``$VAR``/``${VAR}`` are expanded; a relative path stays
+        relative to the working directory.
+        """
+        key = f"google_drive.{name}"
+        raw = self.config.get(key)
+        if raw is None:
+            return None
+        return expand_config_path(key, raw)
+
     def _authenticate(self) -> None:
         """Authenticate with Google Drive API."""
         creds = None
-        token_file = self.config.get("google_drive.token_file")
-        creds_file = self.config.get("google_drive.credentials_file")
+        token_file = self._drive_file_path("token_file")
+        creds_file = self._drive_file_path("credentials_file")
         scopes = self.config.get("google_drive.scopes")
 
         # Load existing token
@@ -237,7 +271,8 @@ class GoogleDriveManager:
                     )
                     logger.error(
                         "Please download OAuth 2.0 credentials from Google Cloud "
-                        "Console"
+                        "Console and set google_drive.credentials_file (or "
+                        "GOOGLE_DRIVE_CREDENTIALS_FILE) to its path"
                     )
                     sys.exit(1)
 
@@ -740,22 +775,7 @@ class BaseLLMClient:
         raw = self.config.get(key)
         if raw is None:
             return None
-        if not isinstance(raw, str) or not raw.strip():
-            logger.error(f"{key} must be a non-empty path string, got {raw!r}")
-            sys.exit(1)
-        path = os.path.expanduser(os.path.expandvars(raw.strip()))
-        if "$" in path:
-            logger.error(
-                f"{key} {raw!r} references an unset environment variable "
-                f"(expanded to {path!r})"
-            )
-            sys.exit(1)
-        if not os.path.isabs(path):
-            logger.error(
-                f"{key} {raw!r} must be an absolute path (expanded to {path!r})"
-            )
-            sys.exit(1)
-        return path
+        return expand_config_path(key, raw, require_absolute=True)
 
     def _load_api_key_file(self, env_var_name: str) -> None:
         """Set ``env_var_name`` from this provider's ``api_key_file``, if any.

@@ -26,7 +26,7 @@ cp .env.example .env
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create/select project → Enable Google Drive API
 3. Create OAuth 2.0 credentials (Desktop application)
-4. Download as `credentials.json` in this directory
+4. Download as `credentials.json` in this directory, or save it elsewhere (e.g. `~/.keys/credentials.json`) and set `google_drive.credentials_file` in `config.json` to that path
 
 ### 3. Test the setup
 ```bash
@@ -48,7 +48,7 @@ If the dry run works, remove `--dry-run` to start renaming files:
 
 ## Troubleshooting
 - **Permission errors**: Make sure `scan-namer` is executable (`chmod +x scan-namer`)
-- **Missing credentials**: Download `credentials.json` from Google Cloud Console
+- **Missing credentials**: Download `credentials.json` from Google Cloud Console and check that `google_drive.credentials_file` (or `GOOGLE_DRIVE_CREDENTIALS_FILE`) points to it
 - **API errors**: Check your API keys in `.env`
 - **No eligible files**: Script only processes files with generic names (containing "raven_scan" by default)
 - **PDF upload fails**: Ensure you're using a vision-enabled model (check `--list-models` for "PDF" indicator)

@@ -50,7 +50,8 @@ cp .env.example .env
 # Edit .env with your API key (XAI_API_KEY, ANTHROPIC_API_KEY, etc.)
 
 # 2. Set up Google Drive credentials
-# Download credentials.json from Google Cloud Console
+# Download credentials.json from Google Cloud Console into this directory, or
+# store it elsewhere and point google_drive.credentials_file at it (see below)
 
 # 3. Test the setup
 ./scan-namer --dry-run

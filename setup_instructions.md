@@ -52,7 +52,7 @@ Dependencies are managed automatically by uv using inline metadata in the Python
 4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client IDs"
 5. Choose "Desktop application" as application type
 6. Download the credentials JSON file
-7. Rename it to `credentials.json` and place in project root
+7. Rename it to `credentials.json` and place in project root, or store it elsewhere and set `google_drive.credentials_file` in `config.json` (or `GOOGLE_DRIVE_CREDENTIALS_FILE`) to its path. `~` and `$VAR` / `${VAR}` are expanded, e.g. `"credentials_file": "~/.keys/credentials.json"`. `token_file` is expanded the same way
 
 ### 3. Set up API Credentials
 
@@ -224,7 +224,7 @@ All options are passed through to the Python script via the bash wrapper.
 
 ### Authentication Issues
 - **Google Drive errors**: Delete `token.json` to force re-authentication
-- **Missing credentials**: Ensure `credentials.json` is downloaded from Google Cloud Console
+- **Missing credentials**: Ensure `credentials.json` is downloaded from Google Cloud Console and that `google_drive.credentials_file` points to it
 - **Permission denied**: Make sure `scan-namer` is executable (`chmod +x scan-namer`)
 
 ### API Issues
