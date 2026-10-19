@@ -4,12 +4,12 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "google-auth-oauthlib>=1.5.0",
-    "google-auth>=2.61.0",
+    "google-auth>=2.62.0",
     "google-api-python-client>=2.201.0",
-    "google-genai>=2.29.0",
-    "anthropic>=1.13.0",
-    "openai>=3.28.0",
-    "pypdf>=6.20.0",
+    "google-genai>=2.31.0",
+    "anthropic>=1.15.0",
+    "openai>=3.31.0",
+    "pypdf>=6.20.1",
     "requests>=2.31.0",
     "python-dotenv>=1.2.4",
     "types-requests",
@@ -21,7 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8",
-    "ruff>=0.17.0",
+    "ruff>=0.17.1",
 ]
 
 [tool.uv]
