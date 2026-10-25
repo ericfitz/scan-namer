@@ -1,3 +1,7 @@
+import json
+
+from conftest import MINIMAL_CONFIG
+
 import scan_namer  # noqa: F401  (kept for symmetry / future use)
 
 
@@ -18,11 +22,22 @@ def test_int_conversion(config, monkeypatch):
     assert isinstance(value, int)
 
 
-def test_float_conversion(config, monkeypatch):
+def test_temperature_setting_is_ignored_with_warning(config_factory, caplog):
+    cfg = json.loads(json.dumps(MINIMAL_CONFIG))
+    cfg["llm"]["temperature"] = 0.3
+    config_factory(cfg)
+    assert "llm.temperature / LLM_TEMPERATURE is no longer used" in caplog.text
+
+
+def test_temperature_env_is_ignored_with_warning(config_factory, monkeypatch, caplog):
     monkeypatch.setenv("LLM_TEMPERATURE", "0.7")
-    value = config.get("llm.temperature")
-    assert value == 0.7
-    assert isinstance(value, float)
+    config_factory(json.loads(json.dumps(MINIMAL_CONFIG)))
+    assert "llm.temperature / LLM_TEMPERATURE is no longer used" in caplog.text
+
+
+def test_no_temperature_setting_no_warning(config_factory, caplog):
+    config_factory(json.loads(json.dumps(MINIMAL_CONFIG)))
+    assert "LLM_TEMPERATURE" not in caplog.text
 
 
 def test_invalid_int_falls_back_to_file_value(config, monkeypatch):

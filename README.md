@@ -183,7 +183,7 @@ The environment variable always takes precedence over the file. This fallback ap
 ### JSON Configuration Files
 - `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset): Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
 - `prompts.json`: LLM prompt templates for document analysis
-- `llm.temperature` (`LLM_TEMPERATURE`) applies to X.AI, OpenAI, LM Studio and Google. It is not sent to Anthropic: API version 2026-10-21, used by anthropic SDK 2.x, rejects `temperature`, `top_p` and `top_k`, so Claude samples at its default
+- Sampling: requests never set `temperature`, `top_p` or `top_k`, so every model samples at its own default. The former `llm.temperature` / `LLM_TEMPERATURE` setting is ignored with a warning
 - `$XDG_STATE_HOME/scan-namer/scan_namer.log` (`~/.local/state/scan-namer/scan_namer.log` when `XDG_STATE_HOME` is unset): run log, rotated at 5 MB with 3 backups (`logging.file` / `LOG_FILE` override it)
 
 **Note**: Environment variables override JSON configuration.

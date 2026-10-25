@@ -154,6 +154,12 @@ class ConfigManager:
             if section not in self.config:
                 logger.error(f"Missing required config section: {section}")
                 sys.exit(1)
+        # Requests leave sampling parameters unset so each model uses its default.
+        if "temperature" in self.config["llm"] or os.getenv("LLM_TEMPERATURE"):
+            logger.warning(
+                "llm.temperature / LLM_TEMPERATURE is no longer used: every model "
+                "samples at its default. Remove the setting."
+            )
 
     def get(self, key_path: str, default=None) -> Any:
         """Get configuration value using dot notation (e.g., 'llm.api_key')."""
@@ -179,7 +185,6 @@ class ConfigManager:
             "llm.provider": "LLM_PROVIDER",
             "llm.model": "LLM_MODEL",
             "llm.max_tokens": "LLM_MAX_TOKENS",
-            "llm.temperature": "LLM_TEMPERATURE",
             "pdf.max_pages_before_extraction": "PDF_MAX_PAGES_BEFORE_EXTRACTION",
             "pdf.extraction_pages": "PDF_EXTRACTION_PAGES",
             "ocr.enable_embedding": "OCR_ENABLE_EMBEDDING",
@@ -215,14 +220,6 @@ class ConfigManager:
                 return int(value)
             except ValueError:
                 logger.warning(f"Invalid integer value for {key_path}: {value}")
-                return None
-
-        # Float conversions
-        if key_path in ["llm.temperature"]:
-            try:
-                return float(value)
-            except ValueError:
-                logger.warning(f"Invalid float value for {key_path}: {value}")
                 return None
 
         # Boolean conversions
@@ -713,7 +710,6 @@ class BaseLLMClient:
             logger.info(f"Using command line override: max_tokens = {max_tokens}")
         else:
             self.max_tokens = config.get("llm.max_tokens", 1000)
-        self.temperature = config.get("llm.temperature", 0.3)
         self.token_costs: list[dict[str, Any]] = []
 
     def analyze_document(
@@ -1150,7 +1146,6 @@ class XAIClient(BaseLLMClient):
                 "model": self.model,
                 "messages": messages,
                 "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
             }
 
             endpoint = self.endpoint
@@ -1237,7 +1232,6 @@ class XAIClient(BaseLLMClient):
                 "model": self.model,
                 "messages": messages,
                 "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
             }
 
             endpoint = self.endpoint
@@ -1519,7 +1513,6 @@ class OpenAIClient(BaseLLMClient):
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
             )
 
             cost_info = self._extract_usage(response)
@@ -1664,7 +1657,6 @@ class OpenAIClient(BaseLLMClient):
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
             )
 
             cost_info = self._extract_usage(response)
@@ -1812,7 +1804,6 @@ class GoogleClient(BaseLLMClient):
                 contents=contents,
                 config={
                     "max_output_tokens": self.max_tokens,
-                    "temperature": self.temperature,
                 },
             )
 
@@ -1895,7 +1886,6 @@ class GoogleClient(BaseLLMClient):
                 contents=contents,
                 config={
                     "max_output_tokens": self.max_tokens,
-                    "temperature": self.temperature,
                 },
             )
 

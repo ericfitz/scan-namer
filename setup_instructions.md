@@ -144,7 +144,7 @@ You can customize the application in two ways:
 
 ### Option 1: Environment Variables (Recommended)
 Edit `.env` file to override any settings:
-- **LLM configuration**: Provider, model, temperature (ignored by Anthropic), max tokens
+- **LLM configuration**: Provider, model, max tokens
 - **PDF processing**: Max pages before extraction, extraction page count
 - **Document processing**: Generic filename patterns, max filename length
 - **Logging**: Level, format, file location

@@ -18,7 +18,6 @@ MINIMAL_CONFIG = {
         "provider": "openai",
         "model": "gpt-5.5",
         "max_tokens": 1000,
-        "temperature": 0.3,
         "providers": {
             "openai": {
                 "api_key_env": "OPENAI_API_KEY",

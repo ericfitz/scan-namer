@@ -20,12 +20,13 @@ anthropic SDK 2.x uses API version 2026-10-21, which rejects `temperature`,
   `update_models.py`). Ruff's target follows it.
 - Dependencies are `Pillow>=13.0.0` and `anthropic>=2.3.0`; the lock moves
   websockets to 17.
+- No provider request sets `temperature`, `top_p` or `top_k`: every model
+  samples at its own default. The `llm.temperature` / `LLM_TEMPERATURE`
+  setting is removed; a leftover value logs a warning and is ignored.
 
 ## Consequences
 
 - Python 3.10 environments can no longer install scan-namer.
-- Forced by SDK 2.x rather than chosen: `AnthropicClient` no longer sends
-  `temperature`; `llm.temperature` / `LLM_TEMPERATURE` still apply to the
-  other providers.
-- Claude requests sample at the model's default temperature (1.0) instead
-  of the configured value (default 0.3).
+- Requests that used the configured temperature (default 0.3) now use each
+  model's default, which is often 1.0, so suggested names may vary more
+  between runs.

@@ -3,7 +3,6 @@
     "provider": "openai",
     "model": "gpt-5.5",
     "max_tokens": 1000,
-    "temperature": 0.3,
     "providers": {
       "lmstudio": {
         "api_endpoint": "http://localhost:1234/v1/chat/completions",
