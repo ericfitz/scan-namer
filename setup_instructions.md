@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. **Python 3.8+** installed on your system
+1. **Python 3.11+** installed on your system
 2. **uv** package manager installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 3. **System dependencies** (see below)
 4. **Google Drive API credentials** (OAuth 2.0)
@@ -144,7 +144,7 @@ You can customize the application in two ways:
 
 ### Option 1: Environment Variables (Recommended)
 Edit `.env` file to override any settings:
-- **LLM configuration**: Provider, model, temperature, max tokens
+- **LLM configuration**: Provider, model, temperature (ignored by Anthropic), max tokens
 - **PDF processing**: Max pages before extraction, extraction page count
 - **Document processing**: Generic filename patterns, max filename length
 - **Logging**: Level, format, file location

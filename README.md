@@ -38,6 +38,8 @@ This script does the following:
     - Cleans up temporary files
 
 ## quick start
+Requires Python 3.11 or newer (uv installs a suitable interpreter if none is present).
+
 ```bash
 # 0. Install system dependencies (see setup_instructions.md for details)
 #    macOS:        brew install poppler tesseract
@@ -181,6 +183,7 @@ The environment variable always takes precedence over the file. This fallback ap
 ### JSON Configuration Files
 - `$XDG_CONFIG_HOME/scan-namer/config.json` (`~/.config/scan-namer/config.json` when `XDG_CONFIG_HOME` is unset): Provider settings, model lists, PDF/logging config. Not in the repo: copy `config.json.example` there to create it, or point `--config` at another file. `scan-namer` and `update-models` run from any directory
 - `prompts.json`: LLM prompt templates for document analysis
+- `llm.temperature` (`LLM_TEMPERATURE`) applies to X.AI, OpenAI, LM Studio and Google. It is not sent to Anthropic: API version 2026-10-21, used by anthropic SDK 2.x, rejects `temperature`, `top_p` and `top_k`, so Claude samples at its default
 - `$XDG_STATE_HOME/scan-namer/scan_namer.log` (`~/.local/state/scan-namer/scan_namer.log` when `XDG_STATE_HOME` is unset): run log, rotated at 5 MB with 3 backups (`logging.file` / `LOG_FILE` override it)
 
 **Note**: Environment variables override JSON configuration.

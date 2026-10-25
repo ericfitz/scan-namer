@@ -1,13 +1,13 @@
 [project]
 name = "scan-namer"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "google-auth-oauthlib>=1.5.0",
     "google-auth>=2.62.0",
     "google-api-python-client>=2.201.0",
     "google-genai>=2.31.0",
-    "anthropic>=1.15.0",
+    "anthropic>=2.3.0",
     "openai>=3.31.0",
     "pypdf>=6.21.2",
     "requests>=2.31.0",
@@ -15,7 +15,7 @@ dependencies = [
     "types-requests",
     "pytesseract>=0.3.13",
     "pdf2image>=1.17.0",
-    "Pillow>=10.0.0",
+    "Pillow>=13.0.0",
 ]
 
 [dependency-groups]

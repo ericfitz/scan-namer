@@ -1330,7 +1330,6 @@ class AnthropicClient(BaseLLMClient):
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
                 system=prompt_config.get("system_prompt", ""),
                 messages=[{"role": "user", "content": content}],
             )
@@ -1421,7 +1420,6 @@ class AnthropicClient(BaseLLMClient):
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
                 system=prompt_config.get("system_prompt", ""),
                 messages=messages,
             )
@@ -2092,9 +2090,7 @@ class ScanNamer:
         # Create custom formatter for RFC3339/ISO8601 with milliseconds
         class RFC3339Formatter(logging.Formatter):
             def formatTime(self, record, datefmt=None) -> str:  # noqa: N802 - overrides logging.Formatter API
-                dt = datetime.datetime.fromtimestamp(
-                    record.created, tz=datetime.timezone.utc
-                )
+                dt = datetime.datetime.fromtimestamp(record.created, tz=datetime.UTC)
                 # Format with 3 decimal places for milliseconds
                 return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 

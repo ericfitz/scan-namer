@@ -8,10 +8,10 @@ pair is then mapped to a per-provider pdf_strategy value that the runtime
 uses to dispatch PDF requests.
 """
 # /// script
-# requires-python = ">=3.8"
+# requires-python = ">=3.11"
 # dependencies = [
 #     "requests>=2.31.0",
-#     "anthropic>=0.7.0",
+#     "anthropic>=2.3.0",
 #     "openai>=1.0.0",
 #     "google-genai>=0.1.0",
 # ]
