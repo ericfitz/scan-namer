@@ -7,8 +7,8 @@ dependencies = [
     "google-auth>=2.62.0",
     "google-api-python-client>=2.201.0",
     "google-genai>=2.34.0",
-    "anthropic>=2.3.0",
-    "openai>=3.41.0",
+    "anthropic>=2.6.0",
+    "openai>=3.46.0",
     "pypdf>=6.21.4",
     "requests>=2.31.0",
     "python-dotenv>=1.2.4",
@@ -21,7 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
-    "ruff>=0.17.3",
+    "ruff>=0.17.4",
 ]
 
 [tool.uv]
