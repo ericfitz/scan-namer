@@ -9,7 +9,7 @@ dependencies = [
     "google-genai>=3.3.0",
     "anthropic>=2.8.0",
     "openai>=3.50.0",
-    "pypdf>=6.21.4",
+    "pypdf>=7.0.1",
     "requests>=2.31.0",
     "python-dotenv>=1.2.4",
     "types-requests",
