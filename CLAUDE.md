@@ -58,4 +58,4 @@ Live testing runs against real Drive and LLM APIs: always pass `--dry-run`, test
 
 ## Learned Preferences
 
-- No pull requests in this repo: commit small fixes straight to main and merge feature branches/worktrees into main directly (take MODE=direct in deps:bump); ask before pushing unusually large or destructive work.
+- No pull requests in this repo: commit small fixes straight to main and merge feature branches/worktrees into main directly (take MODE=direct in dependencies:bump); ask before pushing unusually large or destructive work.
